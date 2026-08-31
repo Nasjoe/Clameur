@@ -1,0 +1,67 @@
+# Production : Traefik (TLS) -> nginx (fichiers) -> gunicorn (Django).
+# / Production: Traefik for TLS, nginx for files, gunicorn for Django.
+#
+# Le reseau `frontend` est celui de la stack TraefikV3, il existe deja.
+# / The `frontend` network belongs to the TraefikV3 stack.
+
+services:
+  db:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - donnees_db:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 10s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      retries: 10
+
+  web:
+    build: .
+    restart: unless-stopped
+    # supervisord tient gunicorn et le worker Celery dans le meme conteneur.
+    # / supervisord holds gunicorn and the Celery worker together.
+    command: supervisord -c /app/supervisord.conf
+    env_file: [.env]
+    volumes:
+      - medias:/app/medias
+      - statiques:/app/staticfiles
+    depends_on:
+      db: {condition: service_healthy}
+      redis: {condition: service_healthy}
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./nginx/clameur.conf:/etc/nginx/conf.d/default.conf:ro
+      - medias:/app/medias:ro
+      - statiques:/app/staticfiles:ro
+    depends_on: [web]
+    networks: [default, frontend]
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=frontend"
+      - "traefik.http.routers.clameur.rule=Host(`${DOMAIN}`)"
+      - "traefik.http.routers.clameur.tls.certresolver=myresolver"
+      - "traefik.http.services.clameur.loadbalancer.server.port=80"
+
+volumes:
+  donnees_db:
+  medias:
+  statiques:
+
+networks:
+  frontend:
+    external: true

@@ -1,0 +1,80 @@
+{% load i18n static %}<!doctype html>
+<html lang="{{ LANGUAGE_CODE|default:'fr' }}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>{% block titre %}{% translate "Clameur" %}{% endblock %}</title>
+  <style>
+    /* Une nuit : fond profond, une seule couleur chaude, beaucoup d'air.
+       / A night sky: deep ground, one warm accent, plenty of air. */
+    :root {
+      --nuit: #0b0d14;
+      --nuit-claire: #161a26;
+      --texte: #e8e6df;
+      --texte-doux: #9a9aa8;
+      --braise: #e8703a;
+      --trait: rgba(232, 230, 223, .14);
+      --rayon: 14px;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+    body {
+      background: radial-gradient(120% 80% at 50% 0%, #1a1f30 0%, var(--nuit) 60%);
+      color: var(--texte);
+      font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      min-height: 100dvh;
+      -webkit-font-smoothing: antialiased;
+    }
+    main {
+      max-width: 34rem; margin: 0 auto;
+      padding: max(2rem, env(safe-area-inset-top)) 1.25rem 3rem;
+      min-height: 100dvh; display: flex; flex-direction: column;
+    }
+    h1 { font-size: 1.9rem; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 .5rem; }
+    .doux { color: #9a9aa8; }
+    .bouton {
+      display: inline-flex; align-items: center; justify-content: center; gap: .6rem;
+      width: 100%; padding: 1.05rem 1.5rem; border: 0; border-radius: var(--rayon);
+      background: var(--braise); color: #150b06;
+      font: inherit; font-weight: 650; font-size: 1.05rem; cursor: pointer;
+      transition: transform .12s ease, filter .12s ease;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .bouton:hover { filter: brightness(1.06); }
+    .bouton:active { transform: scale(.985); }
+    .bouton:disabled { opacity: .45; cursor: not-allowed; }
+    .bouton--fantome { background: transparent; color: var(--texte); border: 1px solid var(--trait); }
+    .champ {
+      width: 100%; padding: .85rem 1rem; border-radius: var(--rayon);
+      border: 1px solid var(--trait); background: var(--nuit-claire);
+      color: var(--texte); font: inherit;
+    }
+    .champ:focus-visible, .bouton:focus-visible {
+      outline: 2px solid var(--braise); outline-offset: 3px;
+    }
+    .carte {
+      background: var(--nuit-claire); border: 1px solid var(--trait);
+      border-radius: var(--rayon); padding: 1rem 1.15rem;
+    }
+    .avis { border-left: 3px solid var(--braise); padding-left: .9rem; }
+    .pied { margin-top: auto; padding-top: 2.5rem; font-size: .8rem; }
+    .pied a { color: #9a9aa8; }
+    /* color-scheme suffit a rendre les controles media en sombre : c'est la
+       seule facon standard de le faire, styliser ::-webkit-media-controls
+       ne marche que sur Chrome. / The only standard way to darken media controls. */
+    audio { color-scheme: dark; width: 100%; }
+    [hidden] { display: none !important; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+  </style>
+  {% block styles %}{% endblock %}
+</head>
+<body>
+  <main>
+    {% block contenu %}{% endblock %}
+    <footer class="pied doux">
+      <a href="{% url 'capsules:mentions_legales' %}">{% translate "Mentions légales" %}</a>
+    </footer>
+  </main>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

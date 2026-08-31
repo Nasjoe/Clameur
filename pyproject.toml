@@ -1,0 +1,61 @@
+[project]
+name = "clameur"
+version = "0.1.0"
+description = "Capsules sonores, tickets thermiques et QR codes dans l'espace public"
+requires-python = ">=3.13"
+dependencies = [
+    "django>=6",
+    "django-htmx>=1.27",
+    "psycopg[binary]>=3.2",
+    "pgvector>=0.3",
+    "celery[redis]>=5.4",
+    "redis>=5.0",
+    "mistralai>=1.0",
+    "pillow>=11",
+    "requests>=2.32",
+    "numpy>=2",
+    "python-dotenv>=1.0",
+    # QR code de l'affiche, en SVG. Pure Python, sans dependance.
+    # / Poster QR code as SVG. Pure Python, no dependency.
+    "segno>=1.6",
+    "gunicorn>=23",
+    "supervisor>=4.2",
+]
+
+[dependency-groups]
+dev = ["pytest>=8", "pytest-django>=4.9", "ruff>=0.8"]
+
+[tool.pytest.ini_options]
+DJANGO_SETTINGS_MODULE = "clameur.settings"
+python_files = ["test_*.py"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 100
+# Le pilote Sunmi est VENDORISE depuis LaBoutik : on ne le reformate pas, on
+# se contente d'y appliquer les quatre corrections documentees en tete.
+# / The Sunmi driver is vendored; we fix it, we do not restyle it.
+exclude = ["impression/sunmi_cloud_printer.py"]
+
+[tool.ruff.lint]
+ignore = [
+    # RUF012 : `list_display = (...)`, `actions = [...]`, `ordering = [...]`
+    # sont la convention Django, pas des defauts mutables par accident.
+    # / Django conventions, not accidental mutable defaults.
+    "RUF012",
+    # BLE001 : les `except Exception` de ce projet sont DELIBERES et
+    # commentes un par un. Publier ne doit jamais echouer, et une panne de
+    # Mistral ne doit jamais depublier une capsule dont le ticket est deja
+    # colle sur un mur. C'est le coeur du design, pas une negligence.
+    # / Blind excepts here are deliberate: publishing must never fail.
+    "BLE001",
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Les imports a effet de bord ne doivent JAMAIS etre supprimes par --fix :
+# leur nom n'est jamais reference, ruff les croit morts, et leur suppression
+# casse l'enregistrement en silence.
+# / Side-effect imports must never be removed by --fix.
+"**/admin.py" = ["F401"]
+"**/apps.py" = ["F401"]
+"**/__init__.py" = ["F401"]

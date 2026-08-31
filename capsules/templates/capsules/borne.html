@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block titre %}{{ borne.nom }} — {% translate "Clameur" %}{% endblock %}
+
+{% block contenu %}
+<h1>{% translate "Dépose une clameur" %}</h1>
+<p class="doux">{{ borne.texte_accueil|default:_("Enregistre une idée, un souvenir. Repars avec un ticket.") }}</p>
+
+{% if not imprimante.en_ligne %}
+  {% comment %}Prevenir AVANT de promettre un ticket : le pire echec du parcours.{% endcomment %}
+  <p class="carte avis" role="status">
+    {% translate "L'imprimante ne répond pas." %}
+    {% translate "Ta clameur sera enregistrée, mais le ticket ne sortira pas tout de suite." %}
+  </p>
+{% endif %}
+
+{% if not borne.active %}
+  <p class="carte avis">{% translate "Cette borne est fermée pour le moment." %}</p>
+{% else %}
+
+<section id="etape-accueil" style="margin-top:2rem">
+  <button class="bouton" id="bouton-demarrer" type="button">
+    {% translate "Commencer à parler" %}
+  </button>
+  <p class="doux" style="font-size:.85rem;margin-top:.75rem">
+    {% translate "Ton téléphone va demander l'accès au micro." %}
+  </p>
+</section>
+
+<section id="etape-enregistrement" hidden style="margin-top:2rem">
+  <p style="font-size:3rem;font-variant-numeric:tabular-nums;margin:.5rem 0" id="chrono" aria-live="off">0:00</p>
+  <p class="doux" id="etat-enregistrement" role="status">{% translate "J'écoute." %}</p>
+  <button class="bouton" id="bouton-arreter" type="button">{% translate "J'ai fini" %}</button>
+</section>
+
+<section id="etape-formulaire" hidden style="margin-top:2rem">
+  <p class="doux">{% translate "Réécoute-toi avant de publier." %}</p>
+  <audio id="reecoute" controls style="width:100%;margin:.75rem 0"></audio>
+
+  <form id="formulaire-publication" style="display:grid;gap:.75rem">
+    <label for="pseudo" class="doux">{% translate "Un pseudo, si tu veux" %}</label>
+    <input class="champ" type="text" id="pseudo" name="pseudo" maxlength="80" autocomplete="off">
+
+    <label for="tag1" class="doux">{% blocktranslate %}Jusqu'à {{ nombre_max_de_tags }} mots-clés{% endblocktranslate %}</label>
+    <div style="display:flex;gap:.5rem">
+      <input class="champ" type="text" id="tag1" name="tags" maxlength="60" autocomplete="off">
+      <input class="champ" type="text" id="tag2" name="tags" maxlength="60" autocomplete="off">
+    </div>
+
+    <label for="photo" class="doux">{% translate "Une photo, si tu veux" %}</label>
+    <input class="champ" type="file" id="photo" name="photo" accept="image/*" capture="environment">
+
+    <button class="bouton" type="submit" id="bouton-publier">{% translate "Publier et imprimer" %}</button>
+    <button class="bouton bouton--fantome" type="button" id="bouton-recommencer">
+      {% translate "Recommencer" %}
+    </button>
+  </form>
+  <p class="doux" id="etat-envoi" role="status" style="margin-top:.5rem"></p>
+</section>
+
+<section id="etape-fin" hidden style="margin-top:2rem">
+  <h1>{% translate "Ton ticket sort." %}</h1>
+  <p class="doux">{% translate "Prends-le, et colle-le où tu veux." %}</p>
+  <p><a class="bouton bouton--fantome" id="lien-capsule" href="#">{% translate "Écouter ma clameur" %}</a></p>
+  <p><a class="doux" href="{% url 'capsules:accueil_borne' borne.slug %}">{% translate "Déposer une autre clameur" %}</a></p>
+</section>
+
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+  window.CLAMEUR = {
+    urlCreation: "{% url 'capsules:creer_capsule' borne.slug %}",
+    dureeMaxSecondes: {{ borne.duree_max_secondes }},
+    jetonCsrf: "{{ csrf_token }}",
+    textes: {
+      micRefuse: "{% translate 'Sans micro, impossible d\'enregistrer.' %}",
+      envoiEnCours: "{% translate 'Envoi de ta voix…' %}",
+      envoiEchoue: "{% translate 'L\'envoi a échoué. Ta voix est toujours là.' %}",
+      reessayer: "{% translate 'Réessayer l\'envoi' %}",
+      publication: "{% translate 'Publication…' %}"
+    }
+  };
+</script>
+<script src="{% static 'capsules/enregistreur.js' %}" defer></script>
+{% endblock %}

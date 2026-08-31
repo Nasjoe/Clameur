@@ -1,0 +1,84 @@
+{% extends "base.html" %}
+{% load i18n %}
+
+{% block titre %}{% translate "Une clameur" %}{% endblock %}
+
+{% block styles %}
+<style>
+  .scene { display: flex; flex-direction: column; gap: 1.25rem; }
+  .portrait {
+    width: 100%; aspect-ratio: 4/3; object-fit: cover;
+    border-radius: var(--rayon); border: 1px solid var(--trait);
+    filter: saturate(.85) contrast(1.05);
+  }
+  /* Le bouton occupe l'ecran : c'est le seul geste demande au passant.
+     / One button, screen-sized: the only gesture asked of a passer-by. */
+  .ecouter { padding: 1.4rem; font-size: 1.2rem; }
+  .etiquettes { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0; }
+  .etiquettes li {
+    border: 1px solid var(--trait); border-radius: 999px;
+    padding: .2rem .8rem; font-size: .85rem; color: #9a9aa8;
+  }
+  .parole { margin: 0 0 .75rem; padding-left: .9rem; border-left: 2px solid var(--voix); }
+  .locuteur { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--voix); }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="scene">
+  {% if capsule.photo %}
+    <img class="portrait" src="{{ capsule.photo.url }}" alt="">
+  {% endif %}
+
+  <div>
+    <h1>{{ capsule.pseudo|default:_("Anonyme") }}</h1>
+    {% comment %}Duree annoncee AVANT la lecture : on ne trahit pas le temps du passant.{% endcomment %}
+    <p class="doux">{{ capsule.duree_secondes }} {% translate "secondes" %}</p>
+  </div>
+
+  {% if tags %}
+    <ul class="etiquettes">{% for tag in tags %}<li>{{ tag }}</li>{% endfor %}</ul>
+  {% endif %}
+
+  {% comment %}
+    L'autoplay est bloque par iOS et Android sans interaction : sans derogation.
+    Tout le travail consiste donc a donner envie d'appuyer.
+    / Autoplay is blocked on mobile: the work is making people want to press.
+  {% endcomment %}
+  <button class="bouton ecouter" id="bouton-ecouter" type="button">
+    ▶ {% translate "Écouter" %}
+  </button>
+  <audio id="lecteur" preload="none" controls hidden style="width:100%">
+    <source src="{{ capsule.audio_a_servir.url }}">
+  </audio>
+
+  {% if segments %}
+    <section aria-label="{% translate 'Transcription' %}" style="margin-top:1rem">
+      <h2 style="font-size:.95rem;color:#9a9aa8;font-weight:600">{% translate "Ce qui est dit" %}</h2>
+      {% for segment in segments %}
+        <p class="parole" style="--voix: {% cycle '#e8703a' '#5aa9e6' '#7ec87e' '#c98ae0' '#e6c65a' %}">
+          <span class="locuteur">{{ segment.speaker }}</span><br>{{ segment.text }}
+        </p>
+      {% endfor %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+  // L'ecoute est comptee AU CLIC, jamais au chargement : c'est la seule mesure
+  // qui dise si les passants ecoutent vraiment.
+  const bouton = document.getElementById("bouton-ecouter");
+  const lecteur = document.getElementById("lecteur");
+  bouton.addEventListener("click", () => {
+    lecteur.hidden = false;
+    bouton.hidden = true;
+    lecteur.play();
+    fetch("{% url 'capsules:compter_une_ecoute' capsule.uuid %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+    }).catch(() => {});
+  });
+</script>
+{% endblock %}

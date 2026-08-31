@@ -1,0 +1,7 @@
+from django.apps import AppConfig
+
+
+class ImpressionConfig(AppConfig):
+    default_auto_field = "django.db.models.BigAutoField"
+    name = "impression"
+    verbose_name = "Impression"

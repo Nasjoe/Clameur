@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% load i18n %}
+{% block titre %}{% translate "Clameur retirée" %}{% endblock %}
+{% block contenu %}
+  {% comment %}
+    Le ticket est colle quelque part dans la rue : son porteur merite une
+    explication, jamais un 404 nu.
+    / The ticket is out there: explain, never a bare 404.
+  {% endcomment %}
+  <h1>{% translate "Cette clameur a été retirée." %}</h1>
+  <p class="doux">
+    {% translate "Le ticket que tu tiens pointait vers une voix qui n'est plus en ligne." %}
+  </p>
+{% endblock %}
