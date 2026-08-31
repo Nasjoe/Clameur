@@ -6,7 +6,7 @@ import wave
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from bornes.models import Borne
+from bornes.models import Reglages
 from capsules.models import Capsule, StatutCapsule
 
 
@@ -61,18 +61,28 @@ def medias_temporaires(settings, tmp_path):
 
 
 @pytest.fixture
-def borne(db):
-    return Borne.objects.create(
-        slug="place-du-marche",
-        nom="Place du marché",
-        numero_serie_imprimante="N411245U00000",
-        texte_accueil="Dépose ta clameur.",
-    )
+def reglages(db):
+    """Les réglages du lieu, avec une imprimante déclarée.
+
+    C'est un objet UNIQUE : `get_solo()` le crée avec ses valeurs par défaut
+    s'il n'existe pas, et il n'y en aura jamais deux.
+    / A singleton: get_solo() creates it with its defaults if missing.
+    """
+    reglages = Reglages.get_solo()
+    reglages.numero_serie_imprimante = "N411245U00000"
+    reglages.texte_accueil = "Dépose ta clameur."
+    reglages.save()
+    return reglages
 
 
 @pytest.fixture
-def borne_sans_imprimante(db):
-    return Borne.objects.create(slug="sans-imprimante", nom="Sans imprimante")
+def reglages_sans_imprimante(db):
+    """Le même objet, sans numéro de série : on ne peut plus en créer un second.
+    / The same object with no serial: a second one cannot exist."""
+    reglages = Reglages.get_solo()
+    reglages.numero_serie_imprimante = ""
+    reglages.save()
+    return reglages
 
 
 def un_fichier_audio(nom="capsule.webm", type_mime="audio/webm"):
@@ -99,9 +109,9 @@ def un_vrai_wav(nom="capsule.wav", secondes=1):
 
 
 @pytest.fixture
-def capsule(borne):
+def capsule(reglages):
     return Capsule.objects.create(
-        borne=borne, pseudo="anonyme", audio_original=un_vrai_wav(), duree_secondes=42,
+        reglages=reglages, pseudo="anonyme", audio_original=un_vrai_wav(), duree_secondes=42,
     )
 
 

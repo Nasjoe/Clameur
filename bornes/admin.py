@@ -1,11 +1,9 @@
 from django.contrib import admin
+from solo.admin import SingletonModelAdmin
 
-from bornes.models import Borne
+from bornes.models import Reglages
 
-
-@admin.register(Borne)
-class BorneAdmin(admin.ModelAdmin):
-    list_display = ("nom", "slug", "active", "numero_serie_imprimante", "dots_par_ligne")
-    list_filter = ("active",)
-    search_fields = ("nom", "slug", "numero_serie_imprimante")
-    prepopulated_fields = {"slug": ("nom",)}
+# `SingletonModelAdmin` remplace la liste et le bouton « ajouter » par un acces
+# direct au formulaire : il n'y a qu'un objet, on ne le cherche pas.
+# / One object: no list, no add button, straight to the form.
+admin.site.register(Reglages, SingletonModelAdmin)

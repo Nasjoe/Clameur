@@ -1,4 +1,4 @@
-"""Vues de la borne et de la lecture. / Borne and playback views."""
+"""Vues de l'enregistrement et de la lecture. / Recording and playback views."""
 
 import logging
 import math
@@ -16,7 +16,7 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
-from bornes.models import Borne
+from bornes.models import Reglages
 from capsules.garde_fous import adresse_ip, limite_atteinte
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
 from capsules.photos import purger_les_exif
@@ -42,9 +42,9 @@ PLAFOND_DUREE_ANNONCEE = 86400
 # / A day: listening again tomorrow counts, reloading ten times does not.
 DUREE_MEMOIRE_DES_ECOUTES = 86400
 
-# Le QR d'invitation ne change que si la borne change : inutile de le
+# Le QR d'invitation ne change que si la reglages change : inutile de le
 # regenerer pour chaque visiteur.
-# / The invitation QR only changes with the borne.
+# / The invitation QR only changes with the reglages.
 DUREE_DU_CACHE_INVITATION = 600
 
 # L'echelle ne fixe que la finesse du trace : le viewBox fait le reste, et
@@ -68,16 +68,16 @@ COULEURS_DES_VOIX = [
 ]
 
 
-def interroger_l_imprimante(borne) -> dict:
+def interroger_l_imprimante(reglages) -> dict:
     """Etat de l'imprimante, mis en cache 30 secondes.
 
     Sans ce cache, chaque visiteur qui ouvre la page declencherait un appel a
     l'API Sunmi. / Without this cache every visitor would hit the Sunmi API.
     """
-    cle = f"imprimante:{borne.slug}"
-    # Un cache indisponible ne doit pas faire tomber la page d'accueil de la
-    # borne : on interroge, et on continue sans lui s'il ne repond pas.
-    # / An unavailable cache must not take the borne's welcome page down.
+    cle = "etat-imprimante"
+    # Un cache indisponible ne doit pas faire tomber la page d'accueil du
+    # lieu : on interroge, et on continue sans lui s'il ne repond pas.
+    # / An unavailable cache must not take the reglages's welcome page down.
     try:
         etat = cache.get(cle)
         if etat is not None:
@@ -87,7 +87,7 @@ def interroger_l_imprimante(borne) -> dict:
 
     from impression.tasks import choisir_le_backend
 
-    backend = choisir_le_backend(borne)
+    backend = choisir_le_backend(reglages)
     if hasattr(backend, "est_en_ligne"):
         en_ligne, message = backend.est_en_ligne()
     else:
@@ -102,48 +102,36 @@ def interroger_l_imprimante(borne) -> dict:
 
 
 @require_GET
-def accueil_borne_par_defaut(request):
-    """`/nouvelle` — la borne ouverte du moment, sans avoir a nommer laquelle.
+def accueil_enregistrement(request):
+    """`/nouvelle` — la page ou l'on depose une clameur.
 
-    C'est l'adresse qu'on donne de vive voix et qu'on encode dans le QR : elle
-    tient dans une phrase. `/b/<slug>` reste disponible pour designer une borne
-    precise quand il y en a plusieurs.
-    / A speakable address for the borne of the day; /b/<slug> still targets one.
+    Une adresse qui tient dans une phrase : c'est elle qu'on dit a voix haute
+    et qu'on encode dans le QR de l'affiche. Il n'y a qu'un lieu, donc rien a
+    designer. / One venue, so nothing to name: an address that fits a sentence.
     """
-    borne = Borne.objects.filter(active=True).order_by("nom").first()
-    if borne is None:
-        raise Http404("aucune borne ouverte")
-    return _rendre_la_borne(request, borne)
-
-
-@require_GET
-def accueil_borne(request, slug):
-    return _rendre_la_borne(request, get_object_or_404(Borne, slug=slug))
-
-
-def _rendre_la_borne(request, borne):
+    reglages = Reglages.get_solo()
     return render(
         request,
         "capsules/borne.html",
         {
-            "borne": borne,
-            "imprimante": interroger_l_imprimante(borne),
+            "reglages": reglages,
+            "imprimante": interroger_l_imprimante(reglages),
             "nombre_max_de_tags": NOMBRE_MAX_DE_TAGS,
         },
     )
 
 
 @require_POST
-def creer_capsule(request, slug):
+def creer_capsule(request):
     """Recoit l'audio des l'arret de l'enregistrement.
 
     L'envoi a lieu AVANT la saisie du pseudo : cela met a profit le temps de
     frappe et garantit qu'un audio n'est jamais perdu si l'onglet se ferme.
     / Uploaded before the form is filled: the audio is never lost.
     """
-    borne = get_object_or_404(Borne, slug=slug)
-    if not borne.active:
-        return JsonResponse({"erreur": _("Cette borne est fermée.")}, status=403)
+    reglages = Reglages.get_solo()
+    if not reglages.active:
+        return JsonResponse({"erreur": _("Les enregistrements sont fermés.")}, status=403)
 
     if limite_atteinte(request, "creation"):
         return JsonResponse(
@@ -159,7 +147,7 @@ def creer_capsule(request, slug):
     # liste rejetterait un navigateur minoritaire sans que personne s'en
     # apercoive. / No format whitelist: it would silently reject a browser.
     capsule = Capsule.objects.create(
-        borne=borne,
+        reglages=reglages,
         audio_original=fichier,
         duree_secondes=_duree_annoncee(request.POST.get("duree")),
     )
@@ -236,7 +224,7 @@ def _attacher_les_tags(capsule, mots) -> None:
 @require_GET
 def lire_capsule(request, uuid):
     capsule = get_object_or_404(
-        Capsule.objects.select_related("borne").prefetch_related("tags_de_capsule__tag"),
+        Capsule.objects.select_related("reglages").prefetch_related("tags_de_capsule__tag"),
         uuid=uuid,
     )
 
@@ -321,16 +309,16 @@ def compter_une_ecoute(request, uuid):
 
 @staff_member_required
 @require_GET
-def affiche_borne(request, slug):
-    """L'affiche A4 a coller au mur, avec le QR d'entree de la borne.
+def affiche(request):
+    """L'affiche A4 a coller au mur, avec le QR d'entree de la reglages.
 
     C'est le seul objet du projet que personne d'autre ne peut fabriquer, et
-    sans lui la borne n'existe pas : le QR est le seul chemin entre le mur et
+    sans elle rien n'existe : le QR est le seul chemin entre le mur et
     le telephone du visiteur.
     / The poster is the only path from the wall to the visitor's phone.
     """
-    borne = get_object_or_404(Borne, slug=slug)
-    url_entree = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:accueil_borne', args=[borne.slug])}"
+    reglages = Reglages.get_solo()
+    url_entree = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:nouvelle')}"
 
     # Correction d'erreur haute : une affiche vit dehors, elle se salit, se
     # dechire, prend la pluie. Le niveau H tolere 30 % du code abime.
@@ -341,7 +329,7 @@ def affiche_borne(request, slug):
         request,
         "capsules/affiche.html",
         {
-            "borne": borne,
+            "reglages": reglages,
             "url_entree": url_entree,
             "qr_svg": qr.svg_inline(scale=12, border=0, dark="#0b0d14"),
         },
@@ -379,18 +367,20 @@ def constellation(request):
 
 
 def invitation_a_enregistrer(request) -> dict | None:
-    """Le QR a scanner pour deposer une clameur, ou None s'il n'y a pas de borne.
+    """Le QR a scanner pour deposer une clameur, ou None si le lieu est ferme.
 
-    On vise la premiere borne active. Un visiteur sur son ordinateur ne peut
-    pas enregistrer sur place : il lui faut son telephone, donc un QR — c'est
-    le meme chemin d'entree que sur l'affiche.
-    / The QR to record a clameur; None when no borne is open.
+    Un visiteur sur son ordinateur ne peut pas enregistrer sur place : il lui
+    faut son telephone, donc un QR — c'est le meme chemin d'entree que sur
+    l'affiche. Le bouton l'accompagne pour qui lit deja depuis un telephone.
+    / The QR for whoever arrives with a phone; the button for whoever reads on one.
     """
-    borne = Borne.objects.filter(active=True).order_by("nom").first()
-    if not borne:
+    reglages = Reglages.get_solo()
+    if not reglages.active:
+        # Proposer d'enregistrer quand le lieu est ferme serait une promesse en
+        # l'air. / Offering to record while closed would be an empty promise.
         return None
 
-    cle = f"invitation:{borne.slug}"
+    cle = "invitation"
     try:
         invitation = cache.get(cle)
         if invitation is not None:
@@ -400,7 +390,7 @@ def invitation_a_enregistrer(request) -> dict | None:
 
     url = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:nouvelle')}"
     invitation = {
-        "borne": borne.nom,
+        "lieu": reglages.nom,
         "url": url,
         "chemin": reverse("capsules:nouvelle"),
         # Correction moyenne : ce QR est lu sur un ecran, pas sur une affiche

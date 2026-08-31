@@ -12,9 +12,9 @@ def purger_les_exif(fichier) -> io.BytesIO:
     L'ORDRE COMPTE. On applique d'abord l'orientation, ensuite seulement on
     efface : effacer avant afficherait la photo de travers sur la moitie des
     telephones. Et si on n'effacait pas, les coordonnees GPS publieraient la
-    position de la borne, et parfois celle de l'auteur.
+    position du lieu, et parfois celle de l'auteur.
     / Order matters: apply orientation first, then strip. Otherwise photos come
-    out sideways — and unstripped GPS would reveal where the borne stands.
+    out sideways — and unstripped GPS would reveal where the venue stands.
     """
     image = Image.open(fichier)
     image = ImageOps.exif_transpose(image)

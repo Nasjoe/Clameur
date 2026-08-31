@@ -2,16 +2,16 @@
 
 import pytest
 
-from bornes.models import Borne
+from bornes.models import Reglages
 from capsules.models import Capsule, Tag, TagDeCapsule
 
 
 @pytest.mark.django_db
 def test_une_borne_a_des_valeurs_par_defaut_utilisables():
-    borne = Borne.objects.create(slug="essai", nom="Essai")
-    assert borne.dots_par_ligne == 576, "80 mm attendu par defaut"
-    assert borne.duree_max_secondes == 600, "garde-fou technique"
-    assert borne.active is True
+    reglages = Reglages.get_solo()
+    assert reglages.dots_par_ligne == 576, "80 mm attendu par defaut"
+    assert reglages.duree_max_secondes == 600, "garde-fou technique"
+    assert reglages.active is True
 
 
 def test_l_extension_pgvector_est_disponible(db):
@@ -23,9 +23,9 @@ def test_l_extension_pgvector_est_disponible(db):
 
 
 @pytest.mark.django_db
-def test_l_identifiant_public_n_est_pas_enumerable(borne, capsule):
+def test_l_identifiant_public_n_est_pas_enumerable(reglages, capsule):
     """Un entier auto-incremente laisserait parcourir tout le corpus."""
-    autre = Capsule.objects.create(borne=borne, audio_original=capsule.audio_original)
+    autre = Capsule.objects.create(reglages=reglages, audio_original=capsule.audio_original)
     assert capsule.uuid != autre.uuid
     assert len(str(capsule.uuid)) == 36
 
@@ -70,12 +70,12 @@ def test_le_type_mime_des_polices_est_connu():
 
 @pytest.mark.django_db
 def test_la_migration_pose_une_borne_sur_une_base_neuve():
-    """Sans borne, la page d'accueil n'affiche aucun bouton d'enregistrement et
+    """Sans reglages, la page d'accueil n'affiche aucun bouton d'enregistrement et
     personne ne peut déposer la première clameur : le site reste vide
     définitivement, sans que rien ne l'explique.
 
     La migration `bornes.0002` en crée une si la table est vide. Elle a tourné
     au montage de cette base de test.
-    / No borne means no button, and nobody can post the first clameur.
+    / No reglages means no button, and nobody can post the first clameur.
     """
-    assert Borne.objects.exists(), "une base neuve doit porter une borne"
+    assert Reglages.objects.exists(), "une base neuve doit porter une reglages"

@@ -115,33 +115,35 @@ def test_l_invitation_porte_le_qr_de_la_borne_active(client, corpus_projete):
     """Un visiteur sur ordinateur ne peut pas enregistrer sur place : il lui
     faut son telephone, donc un QR.
 
-    La borne vient du corpus : la fixture `borne` en creerait une seconde avec
-    le meme slug. / The borne comes from the corpus fixture.
+    La reglages vient du corpus : la fixture `reglages` en creerait une seconde avec
+    le meme slug. / The reglages comes from the corpus fixture.
     """
     from django.core.cache import cache
 
-    from bornes.models import Borne
+    from bornes.models import Reglages
 
     cache.clear()
-    assert Borne.objects.filter(active=True).exists()
+    assert Reglages.objects.filter(active=True).exists()
     contenu = client.get("/").content.decode()
 
     assert "Enregistrer une nouvelle clameur" in contenu
     assert "<svg" in contenu, "pas de QR dans l'invitation"
-    # L'invitation vise l'adresse courte, pas le slug de la borne : c'est elle
+    # L'invitation vise l'adresse courte, pas le slug de la reglages : c'est elle
     # qu'on encode dans le QR et qu'on dit à voix haute.
     assert "/nouvelle" in contenu
 
 
 @pytest.mark.django_db
-def test_sans_borne_active_aucune_invitation_n_est_proposee(client, corpus_projete):
-    """Proposer d'enregistrer quand aucune borne n'ecoute serait une promesse
-    en l'air. / Offering to record with no open borne would be an empty promise."""
+def test_lieu_ferme_aucune_invitation_n_est_proposee(client, corpus_projete):
+    """Proposer d'enregistrer quand aucune reglages n'ecoute serait une promesse
+    en l'air. / Offering to record with no open reglages would be an empty promise."""
     from django.core.cache import cache
 
-    from bornes.models import Borne
+    from bornes.models import Reglages
 
-    Borne.objects.update(active=False)
+    reglages = Reglages.get_solo()
+    reglages.active = False
+    reglages.save()
     cache.clear()
 
     contenu = client.get("/").content.decode()
@@ -149,7 +151,7 @@ def test_sans_borne_active_aucune_invitation_n_est_proposee(client, corpus_proje
 
 
 @pytest.mark.django_db
-def test_l_adresse_courte_mene_a_la_borne_ouverte(client, corpus_projete):
+def test_l_adresse_courte_mene_a_la_page_d_enregistrement(client, corpus_projete):
     """`/nouvelle` tient dans une phrase qu'on dit à voix haute, contrairement
     à `/b/<slug>`. C'est elle qu'on encode dans le QR."""
     from django.core.cache import cache
@@ -165,13 +167,21 @@ def test_l_adresse_courte_mene_a_la_borne_ouverte(client, corpus_projete):
 
 
 @pytest.mark.django_db
-def test_sans_borne_ouverte_l_adresse_courte_repond_404(client, corpus_projete):
-    from bornes.models import Borne
+def test_lieu_ferme_l_adresse_courte_explique(client, corpus_projete):
     from django.core.cache import cache
 
-    Borne.objects.update(active=False)
+    from bornes.models import Reglages
+
+    reglages = Reglages.get_solo()
+    reglages.active = False
+    reglages.save()
     cache.clear()
-    assert client.get("/nouvelle").status_code == 404
+
+    # La page reste accessible mais refuse les enregistrements : un visiteur
+    # qui scanne un QR encore colle merite une explication, pas un 404.
+    # / The page stays reachable and explains, rather than 404ing a live QR.
+    contenu = client.get("/nouvelle").content.decode()
+    assert "fermés" in contenu
 
 
 @pytest.mark.django_db

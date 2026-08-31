@@ -11,7 +11,7 @@ import time
 
 from django.core.management.base import BaseCommand, CommandError
 
-from bornes.models import Borne
+from bornes.models import Reglages
 from impression.escpos_builder import construire_le_ticket
 from impression.sunmi_cloud import SunmiCloudBackend
 
@@ -33,21 +33,16 @@ class TicketDeTest:
 
 
 class Command(BaseCommand):
-    help = "Imprime un ticket de test sur l'imprimante d'une borne."
+    help = "Imprime un ticket de test sur l'imprimante d'une reglages."
 
     def add_arguments(self, parseur):
-        parseur.add_argument("slug", help="Le slug de la borne à tester.")
         parseur.add_argument(
             "--url", default="https://exemple.test/c/ticket-de-test",
             help="L'URL encodée dans le QR code du ticket de test.",
         )
 
     def handle(self, *args, **options):
-        try:
-            borne = Borne.objects.get(slug=options["slug"])
-        except Borne.DoesNotExist:
-            connues = ", ".join(Borne.objects.values_list("slug", flat=True)) or "aucune"
-            raise CommandError(f"Borne inconnue. Bornes existantes : {connues}")
+        reglages = Reglages.get_solo()
 
         if not os.environ.get("SUNMI_APP_ID") or not os.environ.get("SUNMI_APP_KEY"):
             raise CommandError(
@@ -55,7 +50,7 @@ class Command(BaseCommand):
                 "Sans eux, le projet bascule sur le backend mock et rien ne s'imprime."
             )
 
-        backend = SunmiCloudBackend(borne)
+        backend = SunmiCloudBackend(reglages)
 
         possible, message = backend.can_print()
         if not possible:
@@ -70,19 +65,19 @@ class Command(BaseCommand):
         )
 
         octets = construire_le_ticket(
-            TicketDeTest(), borne.dots_par_ligne, options["url"]
+            TicketDeTest(), reglages.dots_par_ligne, options["url"]
         )
         self.stdout.write(
             f"Ticket      : {len(octets)} octets ESC/POS, "
-            f"{borne.dots_par_ligne} points par ligne "
-            f"({'80 mm' if borne.dots_par_ligne >= 576 else '58 mm'})"
+            f"{reglages.dots_par_ligne} points par ligne "
+            f"({'80 mm' if reglages.dots_par_ligne >= 576 else '58 mm'})"
         )
 
         pilote = backend._pilote()
         pilote.appendRawData(octets)
-        numero = f"{borne.numero_serie_imprimante}_test_{int(time.time())}"
+        numero = f"{reglages.numero_serie_imprimante}_test_{int(time.time())}"
         pilote.pushContent(
-            trade_no=numero, sn=borne.numero_serie_imprimante, count=1,
+            trade_no=numero, sn=reglages.numero_serie_imprimante, count=1,
             media_text="Clameur — test",
         )
 
@@ -90,6 +85,6 @@ class Command(BaseCommand):
         self.stdout.write("")
         self.stdout.write("À VÉRIFIER SUR LE PAPIER :")
         self.stdout.write("  1. Le texte n'est pas coupé sur les bords")
-        self.stdout.write("     → sinon, corrige dots_par_ligne sur la borne (576 / 384)")
+        self.stdout.write("     → sinon, corrige dots_par_ligne sur la reglages (576 / 384)")
         self.stdout.write("  2. Le QR code se scanne avec un téléphone")
         self.stdout.write("  3. Le papier est bien coupé à la fin")

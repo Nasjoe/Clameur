@@ -26,18 +26,18 @@ DELAI_ETAT_IMPRIMANTE = (1, 3)
 
 class SunmiCloudBackend(PrinterBackend):
     def __init__(self, borne):
-        self.borne = borne
+        self.reglages = borne
 
     def _pilote(self) -> SunmiCloudPrinter:
         return SunmiCloudPrinter(
-            dots_per_line=self.borne.dots_par_ligne,
+            dots_per_line=self.reglages.dots_par_ligne,
             app_id=os.environ.get("SUNMI_APP_ID", ""),
             app_key=os.environ.get("SUNMI_APP_KEY", ""),
-            printer_sn=self.borne.numero_serie_imprimante,
+            printer_sn=self.reglages.numero_serie_imprimante,
         )
 
     def can_print(self) -> tuple[bool, str]:
-        if not self.borne.numero_serie_imprimante:
+        if not self.reglages.numero_serie_imprimante:
             return False, "Numéro de série Sunmi manquant sur la borne."
         if not os.environ.get("SUNMI_APP_ID"):
             return False, "SUNMI_APP_ID non configuré."
@@ -63,7 +63,7 @@ class SunmiCloudBackend(PrinterBackend):
             # / Three seconds, not ten: this runs inside the page render.
             pilote = self._pilote()
             pilote.DELAI_RESEAU = DELAI_ETAT_IMPRIMANTE
-            reponse = pilote.onlineStatus(self.borne.numero_serie_imprimante)
+            reponse = pilote.onlineStatus(self.reglages.numero_serie_imprimante)
         except Exception as erreur:
             logger.warning("onlineStatus injoignable : %s", erreur)
             return False, "Imprimante injoignable."
@@ -74,7 +74,7 @@ class SunmiCloudBackend(PrinterBackend):
     def print_ticket(self, capsule, url_capsule: str) -> str:
         pilote = self._pilote()
         pilote.appendRawData(
-            construire_le_ticket(capsule, self.borne.dots_par_ligne, url_capsule)
+            construire_le_ticket(capsule, self.reglages.dots_par_ligne, url_capsule)
         )
         # DETERMINISTE, ET SANS HORLOGE. Sunmi deduplique sur ce numero : c'est
         # notre seule cle d'idempotence cote imprimante. Y mettre l'heure la
@@ -85,10 +85,10 @@ class SunmiCloudBackend(PrinterBackend):
         # L'UUID de la capsule suffit : il est unique et il ne change pas.
         # / Deterministic, no clock: this is our idempotency key on Sunmi's side,
         #   and a redelivered task must produce the same number.
-        numero = f"{self.borne.numero_serie_imprimante}_{capsule.uuid.hex[:16]}"
+        numero = f"{self.reglages.numero_serie_imprimante}_{capsule.uuid.hex[:16]}"
         pilote.pushContent(
             trade_no=numero,
-            sn=self.borne.numero_serie_imprimante,
+            sn=self.reglages.numero_serie_imprimante,
             count=1,
             media_text="Clameur",
         )

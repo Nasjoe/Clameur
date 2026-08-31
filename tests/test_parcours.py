@@ -15,19 +15,19 @@ def cache_vierge():
 
 
 @pytest.mark.django_db
-def test_l_accueil_affiche_le_texte_de_la_borne(client, borne):
-    reponse = client.get(f"/b/{borne.slug}")
+def test_l_accueil_affiche_le_texte_du_lieu(client, reglages):
+    reponse = client.get("/nouvelle")
     assert reponse.status_code == 200
     assert "Dépose ta clameur." in reponse.content.decode()
 
 
 @pytest.mark.django_db
-def test_l_accueil_signale_une_imprimante_hors_ligne(client, borne, monkeypatch):
+def test_l_accueil_signale_une_imprimante_hors_ligne(client, reglages, monkeypatch):
     monkeypatch.setattr(
         "capsules.views.interroger_l_imprimante",
-        lambda borne: {"en_ligne": False, "message": "hors ligne"},
+        lambda reglages: {"en_ligne": False, "message": "hors ligne"},
     )
-    contenu = client.get(f"/b/{borne.slug}").content.decode()
+    contenu = client.get("/nouvelle").content.decode()
     assert "ne répond pas" in contenu
 
 
@@ -36,28 +36,28 @@ def test_l_accueil_signale_une_imprimante_hors_ligne(client, borne, monkeypatch)
     "nom,type_mime",
     [("a.webm", "audio/webm"), ("a.m4a", "audio/mp4"), ("a.ogg", "audio/ogg")],
 )
-def test_tout_format_de_navigateur_est_accepte(client, borne, nom, type_mime):
+def test_tout_format_de_navigateur_est_accepte(client, reglages, nom, type_mime):
     """Une liste blanche rejetterait un navigateur minoritaire en silence."""
     reponse = client.post(
-        f"/b/{borne.slug}/capsule", {"audio": un_fichier_audio(nom, type_mime)}
+        "/nouvelle/capsule", {"audio": un_fichier_audio(nom, type_mime)}
     )
     assert reponse.status_code == 200, f"{type_mime} rejeté"
     assert Capsule.objects.filter(uuid=reponse.json()["uuid"]).exists()
 
 
 @pytest.mark.django_db
-def test_une_borne_fermee_refuse_les_enregistrements(client, borne):
-    borne.active = False
-    borne.save()
-    reponse = client.post(f"/b/{borne.slug}/capsule", {"audio": un_fichier_audio()})
+def test_une_borne_fermee_refuse_les_enregistrements(client, reglages):
+    reglages.active = False
+    reglages.save()
+    reponse = client.post("/nouvelle/capsule", {"audio": un_fichier_audio()})
     assert reponse.status_code == 403
 
 
 @pytest.mark.django_db
-def test_on_ne_peut_pas_vider_le_rouleau_de_papier(client, borne):
+def test_on_ne_peut_pas_vider_le_rouleau_de_papier(client, reglages):
     """Le QR de l'affiche se photographie : sans limite, on imprime en boucle."""
     codes = [
-        client.post(f"/b/{borne.slug}/capsule", {"audio": un_fichier_audio()}).status_code
+        client.post("/nouvelle/capsule", {"audio": un_fichier_audio()}).status_code
         for _ in range(7)
     ]
     assert 429 in codes, "aucune limite : le rouleau se vide"
@@ -97,8 +97,8 @@ def test_l_ecoute_est_comptee_au_clic_pas_au_chargement(client, capsule_publiee)
 
 
 @pytest.mark.django_db
-def test_publier_cree_le_ticket_et_les_tags_de_l_auteur(client, borne):
-    creation = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()})
+def test_publier_cree_le_ticket_et_les_tags_de_l_auteur(client, reglages):
+    creation = client.post("/nouvelle/capsule", {"audio": un_vrai_wav()})
     uuid = creation.json()["uuid"]
 
     reponse = client.post(
@@ -119,7 +119,7 @@ def test_les_mentions_legales_sont_atteignables(client):
 
 
 @pytest.mark.django_db
-def test_la_purge_ne_supprime_rien_sans_le_drapeau(borne, capsule):
+def test_la_purge_ne_supprime_rien_sans_le_drapeau(reglages, capsule):
     from django.core.management import call_command
     from django.utils import timezone
 
@@ -146,22 +146,22 @@ def test_la_purge_epargne_les_capsules_publiees(capsule_publiee):
 
 
 @pytest.mark.django_db
-def test_l_affiche_est_reservee_a_l_operateur(client, borne):
+def test_l_affiche_est_reservee_a_l_operateur(client, reglages):
     """L'affiche est un outil d'operateur, pas une page publique."""
-    reponse = client.get(f"/b/{borne.slug}/affiche")
+    reponse = client.get("/affiche")
     assert reponse.status_code in (302, 403), "affiche accessible sans authentification"
 
 
 @pytest.mark.django_db
-def test_l_affiche_porte_le_qr_de_la_borne(client, borne, django_user_model):
+def test_l_affiche_porte_le_qr_du_lieu(client, reglages, django_user_model):
     operateur = django_user_model.objects.create_user(
         username="operateur", password="motdepasse-de-test", is_staff=True
     )
     client.force_login(operateur)
 
-    contenu = client.get(f"/b/{borne.slug}/affiche").content.decode()
+    contenu = client.get("/affiche").content.decode()
     assert "<svg" in contenu, "aucun QR code sur l'affiche"
-    assert f"/b/{borne.slug}" in contenu
+    assert "/nouvelle" in contenu
     assert "A4" in contenu, "format d'impression non défini"
 
 
@@ -184,14 +184,14 @@ def test_un_meme_locuteur_garde_la_meme_couleur(client, capsule_publiee):
 
 
 @pytest.mark.django_db
-def test_le_garde_fou_identifie_le_visiteur_et_non_le_proxy(client, borne):
+def test_le_garde_fou_identifie_le_visiteur_et_non_le_proxy(client, reglages):
     """Dans la chaîne Traefik → nginx → gunicorn, `X-Forwarded-For` vaut
     « client, Traefik » : le visiteur est l'avant-dernier.
 
     Les deux extrémités sont des pièges. Le premier élément est écrit par le
     client — s'y fier laisse forger une adresse par requête. Le dernier est
     l'adresse de notre propre proxy, la même pour tout le monde : s'y fier
-    ferme la borne à tous après cinq clameurs.
+    ferme la reglages à tous après cinq clameurs.
     / Both ends are traps: one is forgeable, the other is shared by everyone.
     """
     from capsules.garde_fous import adresse_ip
@@ -216,7 +216,7 @@ def test_le_garde_fou_identifie_le_visiteur_et_non_le_proxy(client, borne):
 
 
 @pytest.mark.django_db
-def test_deux_visiteurs_derriere_le_meme_proxy_ne_se_bloquent_pas(client, borne):
+def test_deux_visiteurs_derriere_le_meme_proxy_ne_se_bloquent_pas(client, reglages):
     """Le compteur doit distinguer les visiteurs, pas les additionner sous
     l'adresse du proxy."""
     from capsules.garde_fous import limite_atteinte

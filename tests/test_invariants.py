@@ -56,9 +56,9 @@ def test_I2_la_publication_survit_a_un_redis_mort(
 
 @pytest.mark.django_db
 def test_I3_la_publication_survit_a_une_imprimante_absente(
-    capsule, borne_sans_imprimante
+    capsule, reglages_sans_imprimante
 ):
-    capsule.borne = borne_sans_imprimante
+    capsule.reglages = reglages_sans_imprimante
     capsule.save()
 
     publier(capsule)
@@ -111,7 +111,7 @@ def test_l_audio_servi_est_lisible_en_streaming(capsule):
 # ------------------------------------ les invariants sur le chemin HTTP réel
 
 @pytest.mark.django_db
-def test_I2_la_publication_survit_a_un_cache_mort(client, borne, monkeypatch):
+def test_I2_la_publication_survit_a_un_cache_mort(client, reglages, monkeypatch):
     """L'ancien test I2 ne patchait que `.delay` : il validait un invariant que
     le chemin HTTP ne tenait pas. Le garde-fou anti-abus interroge le cache
     Redis AVANT d'atteindre `publier()`, et le backend Redis de Django propage
@@ -122,7 +122,7 @@ def test_I2_la_publication_survit_a_un_cache_mort(client, borne, monkeypatch):
     """
     from tests.conftest import un_vrai_wav
 
-    creation = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()})
+    creation = client.post("/nouvelle/capsule", {"audio": un_vrai_wav()})
     uuid = creation.json()["uuid"]
 
     def cache_mort(*args, **kwargs):
@@ -141,7 +141,7 @@ def test_I2_la_publication_survit_a_un_cache_mort(client, borne, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_la_capture_survit_a_un_cache_mort(client, borne, monkeypatch):
+def test_la_capture_survit_a_un_cache_mort(client, reglages, monkeypatch):
     from tests.conftest import un_vrai_wav
 
     def cache_mort(*args, **kwargs):
@@ -151,13 +151,13 @@ def test_la_capture_survit_a_un_cache_mort(client, borne, monkeypatch):
     monkeypatch.setattr("django.core.cache.cache.set", cache_mort)
     monkeypatch.setattr("django.core.cache.cache.add", cache_mort)
 
-    assert client.get(f"/b/{borne.slug}").status_code == 200
-    reponse = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()})
+    assert client.get("/nouvelle").status_code == 200
+    reponse = client.post("/nouvelle/capsule", {"audio": un_vrai_wav()})
     assert reponse.status_code == 200
 
 
 @pytest.mark.django_db
-def test_republier_la_meme_capsule_reste_sans_effet(client, borne):
+def test_republier_la_meme_capsule_reste_sans_effet(client, reglages):
     """Un visiteur qui réappuie après une réponse perdue ne doit ni voir une
     erreur ni faire sortir un second ticket.
 
@@ -167,7 +167,7 @@ def test_republier_la_meme_capsule_reste_sans_effet(client, borne):
     from impression.models import JobImpression
     from tests.conftest import un_vrai_wav
 
-    uuid = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
+    uuid = client.post("/nouvelle/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
 
     premiere = client.post(f"/c/{uuid}/publier", {"pseudo": "Nina"})
     seconde = client.post(f"/c/{uuid}/publier", {"pseudo": "Nina"})
@@ -222,7 +222,7 @@ def test_une_photo_en_noir_et_blanc_n_empeche_pas_le_ticket(
 
 
 @pytest.mark.django_db(transaction=True)
-def test_deux_publications_simultanees_n_impriment_qu_un_ticket(borne):
+def test_deux_publications_simultanees_n_impriment_qu_un_ticket(reglages):
     """LA COURSE, POUR DE VRAI — deux requêtes qui partent en même temps.
 
     Le test séquentiel ci-dessus passerait même sans verrou : le second POST
@@ -240,7 +240,7 @@ def test_deux_publications_simultanees_n_impriment_qu_un_ticket(borne):
     from tests.conftest import un_vrai_wav
 
     client = Client()
-    uuid = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
+    uuid = client.post("/nouvelle/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
 
     depart = threading.Barrier(2)
     reponses = []

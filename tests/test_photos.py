@@ -1,10 +1,10 @@
 """La purge des metadonnees des photos.
 
 Une photo prise au telephone embarque tres souvent des coordonnees GPS.
-Publiee telle quelle, elle geolocalise la borne et parfois son auteur — ce qui
+Publiee telle quelle, elle geolocalise la reglages et parfois son auteur — ce qui
 contredirait frontalement la promesse du projet : « le systeme ne saura jamais
 ou un ticket a ete pose ».
-/ Phone photos carry GPS EXIF: publishing them would geolocate the borne.
+/ Phone photos carry GPS EXIF: publishing them would geolocate the reglages.
 """
 
 import io

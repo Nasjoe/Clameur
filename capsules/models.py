@@ -33,9 +33,9 @@ class Capsule(models.Model):
     # / A public, non-enumerable identifier: it travels on a ticket in the street.
     uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False)
 
-    borne = models.ForeignKey(
-        "bornes.Borne", on_delete=models.PROTECT, related_name="capsules",
-        verbose_name=_("borne"),
+    reglages = models.ForeignKey(
+        "bornes.Reglages", on_delete=models.PROTECT, related_name="capsules",
+        verbose_name=_("réglages"),
     )
     pseudo = models.CharField(max_length=80, blank=True, verbose_name=_("pseudo"))
     statut = models.CharField(
