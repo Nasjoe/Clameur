@@ -60,8 +60,17 @@ le poste : tout vit dans les conteneurs.
 
 ```bash
 cp .env.example .env
-make fixture     # migre, crée 100 clameurs de démonstration, puis lance le serveur
+make start
 ```
+
+`make start` lit `DEBUG` dans le `.env` et en tire les conséquences : en
+développement il lance `runserver` — qui sert à lui seul les pages, les
+fichiers statiques **et** les WebSocket, puisque `daphne` le fait basculer en
+ASGI — et remplit la base d'un corpus de démonstration si elle est vide. En
+production (`DEBUG=false`), il lance la pile complète derrière supervisord.
+
+La même commande, partout : un serveur n'a pas à se souvenir d'une cible
+différente.
 
 - Constellation : http://localhost:8000/
 - Borne : http://localhost:8000/b/place-du-marche
@@ -81,8 +90,9 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 
 | Commande | |
 |---|---|
-| `make fixture` | corpus de démonstration, puis serveur |
-| `make run` | serveur + worker, en `DEBUG` |
+| `make start` | lance la pile, selon `DEBUG` |
+| `make journaux` · `make arreter` | suivre, arrêter |
+| `make fixture` | recrée le corpus de démonstration |
 | `make test` | les 97 tests |
 | `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel |
@@ -117,7 +127,8 @@ ombre dure et décalée dans laquelle l'objet s'enfonce au survol.
 
 ## Vie privée
 
-Ni compte, ni cookie de suivi, ni position. Le site conserve l'enregistrement,
+Ni compte, ni cookie de suivi, ni position — le compteur d'écoutes se passe
+de session, au prix d'être approximatif derrière une connexion partagée. Le site conserve l'enregistrement,
 la photo éventuelle, le pseudo et les mots-clés saisis. **Les métadonnées EXIF
 des photos sont supprimées à l'ingestion** : une photo de téléphone porte
 souvent des coordonnées GPS, qui trahiraient l'emplacement de la borne.

@@ -6,6 +6,14 @@
 # / Everything runs in Docker: no ffmpeg, no Python, no PostgreSQL on the host.
 
 COMPOSE = docker compose
+COMPOSE_PROD = docker compose -f docker-compose-prod.yml
+
+# LE MODE SE LIT DANS LE .env, PAS DANS LA COMMANDE. `make start` fait la meme
+# chose partout : il regarde DEBUG et en tire les consequences. Un serveur de
+# production n'a pas a se souvenir d'une cible differente.
+# / The mode comes from .env: `make start` behaves correctly everywhere.
+DEBUG_DU_ENV := $(shell grep -sE '^DEBUG=' .env | tail -1 | cut -d= -f2 | tr -d ' "'"'"'' | tr 'A-Z' 'a-z')
+EN_PRODUCTION := $(filter false 0 no,$(DEBUG_DU_ENV))
 
 # Les binaires du venv sont dans le PATH de l'image : on appelle `python`
 # directement, sans passer par `uv run`. Le wrapper `uv` laisse un process
@@ -45,6 +53,58 @@ aide:  ## Affiche cette aide
 	@printf "    s'écrit dans les journaux — avec les mêmes octets ESC/POS :\n"
 	@printf "    $(BLEU)docker compose logs -f celery | grep -A 20 'Ticket (mock)'$(FIN)\n\n"
 	@printf "  La mise en production est décrite dans docs/PASSATION-PRODUCTION.md\n\n"
+
+start:  ## Lance la pile — production si DEBUG=false, développement sinon
+ifeq ($(EN_PRODUCTION),)
+	@printf "\n  $(BRUN)Développement$(FIN) (DEBUG=$(DEBUG_DU_ENV))\n\n"
+	@$(MAKE) --no-print-directory demarrer-en-developpement
+else
+	@printf "\n  $(BRUN)Production$(FIN) (DEBUG=$(DEBUG_DU_ENV))\n\n"
+	@$(MAKE) --no-print-directory demarrer-en-production
+endif
+
+# En developpement, `runserver` suffit a tout : il sert les pages, les fichiers
+# statiques ET les WebSocket, puisque `daphne` est en tete d'INSTALLED_APPS et
+# le fait basculer en ASGI. Pas de gunicorn, pas de nginx, pas de supervisord.
+# / In development runserver serves pages, static files AND WebSockets.
+demarrer-en-developpement: services
+	@$(DANS_WEB) migrate
+	@if [ "$$($(COMPOSE) run --rm -T web python -c \
+	     'import django,os;os.environ.setdefault("DJANGO_SETTINGS_MODULE","clameur.settings");django.setup();from bornes.models import Borne;print(Borne.objects.count())' \
+	     2>/dev/null | tr -dc 0-9)" = "0" ]; then \
+		printf "  Base vide : création du corpus de démonstration.\n\n"; \
+		$(DANS_WEB) creer_des_clameurs --nombre 100 --vider; \
+		$(DANS_WEB) projeter_la_constellation; \
+	fi
+	@printf "\n  Constellation : http://localhost:8000/\n"
+	@printf "  Borne         : http://localhost:8000/b/place-du-marche\n"
+	@printf "  Console       : http://localhost:8000/admin/\n\n"
+	DEBUG=true $(COMPOSE) up web celery
+
+# En production, supervisord tient gunicorn, daphne et Celery ; nginx sert les
+# fichiers et aiguille ; Traefik porte le TLS. Aucune fixture n'est creee : on
+# ne fabrique pas de fausses clameurs sur un site public.
+# / No fixtures in production: we do not fabricate clameurs on a public site.
+demarrer-en-production:
+	$(COMPOSE_PROD) up -d --build
+	@sleep 5
+	$(COMPOSE_PROD) exec -T web python manage.py migrate
+	$(COMPOSE_PROD) exec -T web python manage.py check --deploy
+	@printf "\n  En route. Les journaux : make journaux\n\n"
+
+journaux:  ## Suit les journaux (production si DEBUG=false)
+ifeq ($(EN_PRODUCTION),)
+	$(COMPOSE) logs -f web celery
+else
+	$(COMPOSE_PROD) logs -f web nginx
+endif
+
+arreter:  ## Arrête la pile
+ifeq ($(EN_PRODUCTION),)
+	$(COMPOSE) down
+else
+	$(COMPOSE_PROD) down
+endif
 
 services:  ## Démarre PostgreSQL et Redis seuls
 	$(COMPOSE) up -d db redis
@@ -102,5 +162,6 @@ rebuild:  ## Après ajout d'une dépendance : relock, reconstruit, recrée
 verifier: ## Contrôle la configuration de déploiement (éditeur, contact, https)
 	$(COMPOSE) run --rm -e DEBUG=false web python manage.py check --deploy
 
-.PHONY: aide services migrate migrations fixture run test lint constellation \
+.PHONY: aide start demarrer-en-developpement demarrer-en-production journaux \
+        arreter services migrate migrations fixture run test lint constellation \
         console imprimante purge rebuild verifier

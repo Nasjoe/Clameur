@@ -27,7 +27,9 @@ def test_I1_une_capsule_publiee_est_lisible_par_tous_les_navigateurs(capsule):
 
 
 @pytest.mark.django_db
-def test_I2_la_publication_survit_a_un_redis_mort(capsule, monkeypatch):
+def test_I2_la_publication_survit_a_un_redis_mort(
+    capsule, monkeypatch, django_capture_on_commit_callbacks
+):
     """La base est la source de verite, jamais la file."""
 
     def redis_est_mort(*args, **kwargs):
@@ -36,7 +38,15 @@ def test_I2_la_publication_survit_a_un_redis_mort(capsule, monkeypatch):
     monkeypatch.setattr("impression.tasks.envoyer_le_ticket.delay", redis_est_mort)
     monkeypatch.setattr("capsules.tasks.transcrire.delay", redis_est_mort)
 
-    publier(capsule)  # ne doit pas lever
+    # `django_capture_on_commit_callbacks(execute=True)` EST INDISPENSABLE.
+    # Les enqueues passent par `transaction.on_commit`, et sous `django_db` la
+    # transaction du test est annulee : sans cette enveloppe, les rappels ne
+    # partent jamais et le test valide du vide — on pourrait supprimer tout le
+    # `try/except` de `_enfiler_sans_risque` sans qu'il bronche.
+    # / Without this the on_commit callbacks never run and the test checks nothing.
+    with django_capture_on_commit_callbacks(execute=True):
+        publier(capsule)  # ne doit pas lever
+
     capsule.refresh_from_db()
 
     assert capsule.statut == StatutCapsule.PUBLIEE
@@ -147,11 +157,13 @@ def test_la_capture_survit_a_un_cache_mort(client, borne, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_publier_deux_fois_n_imprime_qu_un_ticket(client, borne):
-    """Deux onglets, ou un réseau qui coupe pendant la réponse et un visiteur
-    qui réappuie : les deux requêtes passaient le contrôle de statut avant le
-    premier enregistrement, et deux tickets sortaient.
-    / Two concurrent POSTs both passed the status check and printed twice."""
+def test_republier_la_meme_capsule_reste_sans_effet(client, borne):
+    """Un visiteur qui réappuie après une réponse perdue ne doit ni voir une
+    erreur ni faire sortir un second ticket.
+
+    Ce test est SÉQUENTIEL : il couvre l'idempotence, pas la course. Celle-ci
+    est vérifiée par le test à deux fils ci-dessous.
+    / Sequential: covers idempotence, not the race. See the threaded test below."""
     from impression.models import JobImpression
     from tests.conftest import un_vrai_wav
 
@@ -207,3 +219,49 @@ def test_une_photo_en_noir_et_blanc_n_empeche_pas_le_ticket(
 
     octets = construire_le_ticket(capsule, 576, "https://x.example/c/1")
     assert len(octets) > 100, "le ticket n'a pas été construit"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_deux_publications_simultanees_n_impriment_qu_un_ticket(borne):
+    """LA COURSE, POUR DE VRAI — deux requêtes qui partent en même temps.
+
+    Le test séquentiel ci-dessus passerait même sans verrou : le second POST
+    y trouve toujours la capsule déjà publiée. Ici les deux fils entrent
+    ensemble, et sans `select_for_update` ils lisent tous deux `brouillon`,
+    normalisent tous deux, et créent deux `JobImpression` — donc deux tickets.
+    / The sequential test would pass without the lock; this one would not.
+    """
+    import threading
+
+    from django.db import connections
+    from django.test import Client
+
+    from impression.models import JobImpression
+    from tests.conftest import un_vrai_wav
+
+    client = Client()
+    uuid = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
+
+    depart = threading.Barrier(2)
+    reponses = []
+
+    def publier_depuis_un_fil():
+        try:
+            depart.wait(timeout=5)
+            reponses.append(Client().post(f"/c/{uuid}/publier", {"pseudo": "Nina"}).status_code)
+        finally:
+            # Un fil Django doit rendre sa connexion, sinon la base garde une
+            # transaction ouverte et le test suivant se bloque.
+            # / A Django thread must close its connection or the next test hangs.
+            connections.close_all()
+
+    fils = [threading.Thread(target=publier_depuis_un_fil) for _ in range(2)]
+    for fil in fils:
+        fil.start()
+    for fil in fils:
+        fil.join(timeout=30)
+
+    assert reponses == [200, 200], f"réponses inattendues : {reponses}"
+    assert JobImpression.objects.filter(capsule__uuid=uuid).count() == 1, (
+        "deux tickets sortiraient de l'imprimante"
+    )

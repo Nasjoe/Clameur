@@ -14,7 +14,15 @@ from capsules.models import StatutCapsule
 
 logger = logging.getLogger(__name__)
 
-DUREE_MAX_FFMPEG = 120
+# NETTEMENT SOUS LE DELAI DE GUNICORN (180 s, voir supervisord.conf). Les deux
+# etaient egaux : gunicorn tuait donc le worker avant que ffmpeg n'atteigne son
+# propre delai, et le repli sur l'audio d'origine — la moitie de l'invariant
+# I1 — n'etait jamais atteint. Pire depuis que la publication tient dans une
+# transaction : au lieu d'une capsule publiee sans ticket, on obtenait un
+# rollback, une capsule bloquee en brouillon, et rien pour la rattraper.
+# / They were equal, so gunicorn killed the worker before ffmpeg could time out
+#   and the fallback was never reached.
+DUREE_MAX_FFMPEG = 60
 
 
 def normaliser_l_audio(capsule) -> None:

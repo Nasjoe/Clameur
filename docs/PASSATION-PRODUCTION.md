@@ -39,7 +39,26 @@ Traefik (TLS, réseau `frontend`)
        db : postgres + pgvector      redis : file Celery + couche de canaux
 ```
 
-## 2. Prérequis
+## 2. Prérequis et données
+
+**La base et les enregistrements vivent sur le disque**, dans `donnees/`, et
+non dans des volumes Docker nommés :
+
+```
+donnees/postgres/   la base
+donnees/medias/     les enregistrements et les photos
+```
+
+C'est délibéré. Un volume nommé vit dans les entrailles de Docker : on ne sait
+pas où il est, `docker volume prune` l'emporte sans prévenir, et le sauvegarder
+demande de passer par un conteneur. Ici, `pg_dump` et `rsync` y accèdent
+directement, et une suppression est un geste conscient.
+
+**`donnees/medias/` est ce qui ne se régénère pas.** La base se reconstruit à
+partir d'un dump, les fichiers statiques se recompilent, les vecteurs se
+recalculent — les voix des gens, non. C'est le dossier à sauvegarder en premier.
+
+
 
 - Docker et le plugin Compose.
 - **La stack TraefikV3 doit tourner**, avec son réseau externe `frontend` et
@@ -72,11 +91,20 @@ Docker est le seul prérequis du serveur : ni Python, ni uv, ni ffmpeg à
 installer.
 
 ```bash
-docker compose -f docker-compose-prod.yml build
-docker compose -f docker-compose-prod.yml up -d
+make start                       # DEBUG=false ⇒ pile de production
+make console                     # crée le compte opérateur
+```
+
+`make start` lit `DEBUG` dans le `.env` : à `false`, il construit les images,
+démarre la pile, migre et lance `check --deploy`. Il ne crée **jamais** de
+fixtures — on ne fabrique pas de fausses clameurs sur un site public.
+
+L'équivalent à la main, si tu préfères voir chaque étape :
+
+```bash
+docker compose -f docker-compose-prod.yml up -d --build
 docker compose -f docker-compose-prod.yml exec web python manage.py migrate
 docker compose -f docker-compose-prod.yml exec web python manage.py check --deploy
-docker compose -f docker-compose-prod.yml exec web python manage.py createsuperuser
 ```
 
 **`check --deploy` refuse de passer** tant que `EDITEUR` et `CONTACT` ne sont

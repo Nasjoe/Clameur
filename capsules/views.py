@@ -16,7 +16,7 @@ from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from bornes.models import Borne
-from capsules.garde_fous import limite_atteinte
+from capsules.garde_fous import adresse_ip, limite_atteinte
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
 from capsules.photos import purger_les_exif
 from capsules.publication import publier
@@ -263,14 +263,24 @@ def compter_une_ecoute(request, uuid):
     est-ce que les passants ecoutent vraiment ?
     / Called on play, never on page load: the only metric that matters.
     """
-    # Une ecoute par session et par capsule. Sans cela, une boucle de `curl`
-    # porte une clameur a dix mille ecoutes — or ce compteur est la seule
-    # mesure qui dira si les passants scannent vraiment, et il dimensionne les
-    # etoiles du ciel. La deduplication cote navigateur ne protege de rien.
-    # / One play per session and capsule: the client-side dedupe protects nothing.
-    if not request.session.session_key:
-        request.session.save()
-    cle = f"ecoute:{request.session.session_key}:{uuid}"
+    # UNE ECOUTE PAR ADRESSE ET PAR CAPSULE, SANS COOKIE.
+    # La deduplication cote navigateur ne protege de rien : une boucle de
+    # `curl` portait une clameur a dix mille ecoutes, alors que ce compteur est
+    # la seule mesure qui dira si les passants scannent vraiment, et qu'il
+    # dimensionne les etoiles du ciel.
+    #
+    # On dedupliquait d'abord sur la session — mais elle etait CREEE par la
+    # requete elle-meme : un client qui ne renvoyait pas le cookie obtenait une
+    # cle neuve a chaque appel, et un simple passant repartait avec un cookie de
+    # deux semaines, ce que les mentions legales promettent de ne pas faire.
+    #
+    # L'adresse est imparfaite — derriere le partage de connexion d'un lieu,
+    # plusieurs personnes la partagent et une seule ecoute sera comptee. La
+    # mesure est donc un plancher, jamais un compte exact. C'est le prix d'un
+    # compteur sans cookie, et il est assume.
+    # / Deduped by address, not by a session we would have to create. Behind a
+    #   shared connection this undercounts: the figure is a floor, not a total.
+    cle = f"ecoute:{adresse_ip(request)}:{uuid}"
     try:
         premiere_fois = cache.add(cle, 1, DUREE_MEMOIRE_DES_ECOUTES)
     except Exception:

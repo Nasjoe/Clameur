@@ -145,13 +145,19 @@ def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, borne, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_deux_tickets_de_la_meme_seconde_ont_des_numeros_differents(
-    capsule, borne, monkeypatch
-):
-    """Sunmi déduplique sur le numéro : deux publications dans la même seconde
-    sur la même borne — courant au plus fort d'un événement — auraient produit
-    le même, et un des deux tickets ne serait pas sorti.
-    / Sunmi deduplicates on trade_no; identical numbers lose a ticket."""
+def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, borne, monkeypatch):
+    """`trade_no` est notre clé d'idempotence côté Sunmi, qui déduplique dessus.
+
+    Il doit donc être DÉTERMINISTE : une tâche redélivrée par Celery — un
+    redéploiement au mauvais moment — doit produire exactement le même numéro,
+    sinon Sunmi ne voit pas le doublon et un second ticket sort. Y mettre
+    l'horloge détruisait cette propriété.
+
+    Et il doit rester unique d'une capsule à l'autre, y compris pour deux
+    publications de la même seconde sur la même borne.
+    / Deterministic so a redelivered task yields the same number, unique so two
+      capsules never collide.
+    """
     from unittest.mock import patch
 
     from capsules.models import Capsule
@@ -161,13 +167,14 @@ def test_deux_tickets_de_la_meme_seconde_ont_des_numeros_differents(
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
 
     backend = SunmiCloudBackend(borne)
-    with patch("impression.sunmi_cloud.time.time", return_value=1700000000), \
-         patch.object(SunmiCloudBackend, "_pilote"), \
+    with patch.object(SunmiCloudBackend, "_pilote"), \
          patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
         premier = backend.print_ticket(capsule, "https://x.example/c/1")
+        rejeu = backend.print_ticket(capsule, "https://x.example/c/1")
         second = backend.print_ticket(autre, "https://x.example/c/2")
 
-    assert premier != second
+    assert premier == rejeu, "un rejeu doit produire le même numéro, sinon Sunmi réimprime"
+    assert premier != second, "deux capsules ne peuvent pas partager un numéro"
 
 
 @pytest.mark.django_db

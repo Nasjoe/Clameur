@@ -17,7 +17,10 @@ QUATRE CORRECTIONS APPLIQUEES A LA COPIE :
      Sans valeur de retour, le controle d'etat de l'imprimante est irrealisable.
   5. Le calcul de niveau de gris debordait sur uint8 : un pixel blanc rendait
      7 au lieu de 255, et les zones claires des photos sortaient noires.
-/ Five fixes: timeout, logging, HTTP status, return values, greyscale overflow.
+  6. Une image en niveaux de gris faisait lever une IndexError : le tableau
+     n'a que deux dimensions la ou le code en attend trois.
+/ Six fixes: timeout, logging, HTTP status, return values, greyscale overflow,
+  greyscale input.
 """
 
 import logging
@@ -742,6 +745,16 @@ class SunmiCloudPrinter:
             img_res = img_org.resize((w, h))
         else:
             img_res = img_org
+
+        # CORRECTION 6 — trois canaux, toujours. `convertToGray` indexe
+        # data[y][x][0..2] : une image en niveaux de gris donne un tableau a
+        # deux dimensions et fait lever une IndexError, donc un ticket qui ne
+        # sort jamais et dont chaque relance echoue a l'identique. Le garde
+        # est ICI, et non a l'ingestion, parce qu'une image posee depuis la
+        # console d'administration ne passe pas par elle.
+        # / Guard here, not at ingestion: an admin-uploaded image bypasses it.
+        if img_res.mode != "RGB":
+            img_res = img_res.convert("RGB")
 
         gray_data = self.convertToGray(img_res)
         if mode == DIFFUSE_DITHER:

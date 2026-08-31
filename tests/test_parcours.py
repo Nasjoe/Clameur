@@ -181,3 +181,55 @@ def test_un_meme_locuteur_garde_la_meme_couleur(client, capsule_publiee):
     segments = _colorer_les_voix(capsule_publiee.transcription_raw["segments"])
     assert segments[0]["couleur"] == segments[2]["couleur"], "même voix, couleurs différentes"
     assert segments[0]["couleur"] != segments[1]["couleur"], "deux voix, même couleur"
+
+
+@pytest.mark.django_db
+def test_le_garde_fou_identifie_le_visiteur_et_non_le_proxy(client, borne):
+    """Dans la chaîne Traefik → nginx → gunicorn, `X-Forwarded-For` vaut
+    « client, Traefik » : le visiteur est l'avant-dernier.
+
+    Les deux extrémités sont des pièges. Le premier élément est écrit par le
+    client — s'y fier laisse forger une adresse par requête. Le dernier est
+    l'adresse de notre propre proxy, la même pour tout le monde : s'y fier
+    ferme la borne à tous après cinq clameurs.
+    / Both ends are traps: one is forgeable, the other is shared by everyone.
+    """
+    from capsules.garde_fous import adresse_ip
+
+    def requete(entete):
+        fausse = client.request().wsgi_request
+        fausse.META["HTTP_X_FORWARDED_FOR"] = entete
+        return fausse
+
+    # Chaîne réelle : le client, puis Traefik ajouté par nginx.
+    assert adresse_ip(requete("203.0.113.7, 172.20.0.3")) == "203.0.113.7"
+
+    # Le client tente de se cacher derrière une adresse forgée : elle passe
+    # devant, la vraie reste en avant-dernier.
+    assert adresse_ip(requete("1.2.3.4, 203.0.113.7, 172.20.0.3")) == "203.0.113.7"
+
+    # Sans proxy (développement), on retombe sur l'adresse directe.
+    directe = client.request().wsgi_request
+    directe.META.pop("HTTP_X_FORWARDED_FOR", None)
+    directe.META["REMOTE_ADDR"] = "127.0.0.1"
+    assert adresse_ip(directe) == "127.0.0.1"
+
+
+@pytest.mark.django_db
+def test_deux_visiteurs_derriere_le_meme_proxy_ne_se_bloquent_pas(client, borne):
+    """Le compteur doit distinguer les visiteurs, pas les additionner sous
+    l'adresse du proxy."""
+    from capsules.garde_fous import limite_atteinte
+
+    def requete_de(ip):
+        fausse = client.request().wsgi_request
+        fausse.META["HTTP_X_FORWARDED_FOR"] = f"{ip}, 172.20.0.3"
+        return fausse
+
+    for _ in range(6):
+        limite_atteinte(requete_de("203.0.113.7"), "creation")
+
+    assert limite_atteinte(requete_de("203.0.113.7"), "creation") is True
+    assert limite_atteinte(requete_de("198.51.100.9"), "creation") is False, (
+        "un visiteur innocent est bloqué par le compteur d'un autre"
+    )

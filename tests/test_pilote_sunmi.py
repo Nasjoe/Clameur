@@ -109,3 +109,21 @@ def test_le_calcul_de_gris_ne_deborde_pas():
 
     noir = Image.new("RGB", (4, 4), (0, 0, 0))
     assert int(np.asarray(pilote_de_test().convertToGray(noir)).max()) == 0
+
+
+@pytest.mark.django_db
+def test_une_image_en_niveaux_de_gris_ne_fait_pas_lever_le_pilote(tmp_path):
+    """`convertToGray` indexe trois canaux par pixel : une image en mode `L`
+    donne un tableau à deux dimensions et lève une IndexError.
+
+    Le garde est dans le pilote et non à l'ingestion, parce qu'une image posée
+    depuis la console d'administration ne passe pas par la purge EXIF.
+    / The guard lives in the driver: admin-uploaded images bypass ingestion."""
+    from PIL import Image
+
+    chemin = tmp_path / "mono.png"
+    Image.new("L", (32, 24), 128).save(chemin)
+
+    pilote = pilote_de_test()
+    pilote.appendImage(str(chemin), width=32)  # ne doit pas lever
+    assert len(pilote.orderData) > 0

@@ -8,7 +8,6 @@ serveur peut vivre derriere un NAT.
 
 import logging
 import os
-import time
 
 from impression.base import PrinterBackend
 from impression.escpos_builder import construire_le_ticket
@@ -19,7 +18,10 @@ logger = logging.getLogger(__name__)
 # L'etat de l'imprimante est une information de confort : mieux vaut
 # l'ignorer que faire attendre le visiteur.
 # / Printer state is a comfort: better skipped than kept waiting for.
-DELAI_ETAT_IMPRIMANTE = 3
+# (connexion, lecture). Un scalaire vaut pour CHACUNE des deux phases : trois
+# secondes en scalaire, c'est six secondes d'attente possible dans le rendu
+# d'une page. / A scalar timeout applies to each phase: 3 would mean 6.
+DELAI_ETAT_IMPRIMANTE = (1, 3)
 
 
 class SunmiCloudBackend(PrinterBackend):
@@ -74,17 +76,16 @@ class SunmiCloudBackend(PrinterBackend):
         pilote.appendRawData(
             construire_le_ticket(capsule, self.borne.dots_par_ligne, url_capsule)
         )
-        # L'UUID DE LA CAPSULE, PAS SEULEMENT L'HORLOGE. Deux publications dans
-        # la meme seconde sur la meme borne — courant au plus fort d'un
-        # evenement — produisaient le meme numero. Or Sunmi deduplique sur ce
-        # numero : l'un des deux tickets ne serait pas sorti, et `printStatus`
-        # serait devenu ambigu.
-        # / Two publications in the same second produced the same trade_no, and
-        #   Sunmi deduplicates on it.
-        numero = (
-            f"{self.borne.numero_serie_imprimante}"
-            f"_{capsule.uuid.hex[:8]}_{int(time.time())}"
-        )
+        # DETERMINISTE, ET SANS HORLOGE. Sunmi deduplique sur ce numero : c'est
+        # notre seule cle d'idempotence cote imprimante. Y mettre l'heure la
+        # detruisait — un rejeu de la tache produisait un numero different, donc
+        # un second ticket. Or Celery redelivre les taches interrompues
+        # (`acks_late`), et le garde de `envoyer_le_ticket` ne peut rien contre
+        # une coupure survenue APRES l'envoi mais AVANT l'ecriture du statut.
+        # L'UUID de la capsule suffit : il est unique et il ne change pas.
+        # / Deterministic, no clock: this is our idempotency key on Sunmi's side,
+        #   and a redelivered task must produce the same number.
+        numero = f"{self.borne.numero_serie_imprimante}_{capsule.uuid.hex[:16]}"
         pilote.pushContent(
             trade_no=numero,
             sn=self.borne.numero_serie_imprimante,

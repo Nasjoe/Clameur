@@ -40,7 +40,7 @@ def _limite_atteinte(request, action: str) -> bool:
         request.session.save()
 
     empreintes = [
-        f"limite:{action}:ip:{_adresse_ip(request)}",
+        f"limite:{action}:ip:{adresse_ip(request)}",
         f"limite:{action}:session:{request.session.session_key}",
     ]
     for empreinte in empreintes:
@@ -60,17 +60,30 @@ def _limite_atteinte(request, action: str) -> bool:
     return False
 
 
-def _adresse_ip(request) -> str:
-    """L'adresse telle que NOTRE proxy l'a vue, pas celle que le client annonce.
+def adresse_ip(request) -> str:
+    """L'adresse du visiteur, dans une chaine Traefik -> nginx -> gunicorn.
 
-    `X-Forwarded-For` s'ecrit de gauche a droite : le premier element vient du
-    client et se forge en une ligne de curl, le dernier est ajoute par le
-    proxy le plus proche de nous. Prendre le premier revenait a offrir le
-    contournement du garde-fou a qui sait poser un en-tete.
-    / The first XFF entry is client-supplied and trivially forged; the last is
-      the one our own proxy appended.
+    `X-Forwarded-For` s'ecrit de gauche a droite, chaque proxy ajoutant a la
+    fin l'adresse de celui qui l'a appele. Notre chaine produit donc :
+
+        "<client>, <Traefik>"          vu par Django
+
+    car Traefik pose l'adresse du client, puis nginx ajoute celle de Traefik.
+    Le visiteur est l'AVANT-DERNIER element.
+
+    Les deux extremites sont des pieges, et j'ai teste les deux :
+    - le PREMIER element est ecrit par le client. S'y fier laisse n'importe qui
+      forger une adresse differente a chaque requete et vider le rouleau.
+    - le DERNIER est l'adresse de notre propre proxy, identique pour tout le
+      monde. S'y fier fait compter tous les visiteurs sur un seul compteur :
+      apres cinq clameurs, la borne se ferme a tous pendant une heure.
+    / Both ends are traps: the first is client-written, the last is our own
+      proxy — shared by everyone, so the borne would lock out all visitors.
     """
     transmise = request.META.get("HTTP_X_FORWARDED_FOR", "")
-    if transmise:
-        return transmise.split(",")[-1].strip()
+    maillons = [m.strip() for m in transmise.split(",") if m.strip()]
+    if len(maillons) >= 2:
+        return maillons[-2]
+    if maillons:
+        return maillons[-1]
     return request.META.get("REMOTE_ADDR", "inconnue")

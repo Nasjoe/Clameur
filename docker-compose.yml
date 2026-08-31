@@ -6,6 +6,13 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:-clameur}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clameur_dev}
     volumes:
+      # En DEVELOPPEMENT, un volume nomme est le bon choix : les donnees sont
+      # des fixtures regenerables, et `docker compose down -v` nettoie tout sans
+      # laisser de dossier dans le repertoire de travail. En PRODUCTION c'est
+      # l'inverse — voir docker-compose-prod.yml, ou la base et les medias
+      # vivent sur le disque, la ou une sauvegarde les trouve.
+      # / A named volume suits development: the data is regenerable fixtures.
+      #   Production does the opposite; see docker-compose-prod.yml.
       - donnees_db:/var/lib/postgresql/data
     ports:
       - "5433:5432"
