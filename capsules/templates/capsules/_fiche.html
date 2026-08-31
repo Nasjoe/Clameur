@@ -28,7 +28,7 @@
     <audio class="lecteur-de-fiche" controls preload="none"
          data-uuid="{{ clameur.capsule.uuid }}"
          aria-label="{% blocktranslate with nom=clameur.capsule.pseudo|default:_('Anonyme') %}Écouter la clameur de {{ nom }}{% endblocktranslate %}">
-      <source src="{{ clameur.audio }}" type="audio/mp4">
+      <source src="{{ clameur.audio }}"{% if clameur.type_mime %} type="{{ clameur.type_mime }}"{% endif %}>
     </audio>
   </div>
 

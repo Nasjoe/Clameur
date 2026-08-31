@@ -8,7 +8,7 @@ to an empty page.
 
 import pytest
 
-from capsules.models import StatutCapsule
+from capsules.models import Capsule, StatutCapsule
 from capsules.publication import publier
 from impression.models import JobImpression, StatutJob
 
@@ -96,3 +96,114 @@ def test_l_audio_servi_est_lisible_en_streaming(capsule):
     assert position_mdat == -1 or position_moov < position_mdat, (
         "moov apres mdat : durée inconnue et déplacement impossible"
     )
+
+
+# ------------------------------------ les invariants sur le chemin HTTP réel
+
+@pytest.mark.django_db
+def test_I2_la_publication_survit_a_un_cache_mort(client, borne, monkeypatch):
+    """L'ancien test I2 ne patchait que `.delay` : il validait un invariant que
+    le chemin HTTP ne tenait pas. Le garde-fou anti-abus interroge le cache
+    Redis AVANT d'atteindre `publier()`, et le backend Redis de Django propage
+    ses erreurs de connexion — un Redis tombé faisait donc répondre 500 à toute
+    la chaîne de capture, et la voix du visiteur était perdue.
+    / The old I2 test only patched .delay, so it validated an invariant the HTTP
+      path did not hold: the throttle hits Redis before publier() is reached.
+    """
+    from tests.conftest import un_vrai_wav
+
+    creation = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()})
+    uuid = creation.json()["uuid"]
+
+    def cache_mort(*args, **kwargs):
+        raise ConnectionError("Redis est mort")
+
+    monkeypatch.setattr("django.core.cache.cache.get", cache_mort)
+    monkeypatch.setattr("django.core.cache.cache.set", cache_mort)
+    monkeypatch.setattr("django.core.cache.cache.add", cache_mort)
+    monkeypatch.setattr("django.core.cache.cache.incr", cache_mort)
+
+    reponse = client.post(f"/c/{uuid}/publier", {"pseudo": "Nina"})
+
+    assert reponse.status_code == 200, "un cache mort ne doit pas faire perdre la voix"
+    capsule = Capsule.objects.get(uuid=uuid)
+    assert capsule.statut == StatutCapsule.PUBLIEE
+
+
+@pytest.mark.django_db
+def test_la_capture_survit_a_un_cache_mort(client, borne, monkeypatch):
+    from tests.conftest import un_vrai_wav
+
+    def cache_mort(*args, **kwargs):
+        raise ConnectionError("Redis est mort")
+
+    monkeypatch.setattr("django.core.cache.cache.get", cache_mort)
+    monkeypatch.setattr("django.core.cache.cache.set", cache_mort)
+    monkeypatch.setattr("django.core.cache.cache.add", cache_mort)
+
+    assert client.get(f"/b/{borne.slug}").status_code == 200
+    reponse = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()})
+    assert reponse.status_code == 200
+
+
+@pytest.mark.django_db
+def test_publier_deux_fois_n_imprime_qu_un_ticket(client, borne):
+    """Deux onglets, ou un réseau qui coupe pendant la réponse et un visiteur
+    qui réappuie : les deux requêtes passaient le contrôle de statut avant le
+    premier enregistrement, et deux tickets sortaient.
+    / Two concurrent POSTs both passed the status check and printed twice."""
+    from impression.models import JobImpression
+    from tests.conftest import un_vrai_wav
+
+    uuid = client.post(f"/b/{borne.slug}/capsule", {"audio": un_vrai_wav()}).json()["uuid"]
+
+    premiere = client.post(f"/c/{uuid}/publier", {"pseudo": "Nina"})
+    seconde = client.post(f"/c/{uuid}/publier", {"pseudo": "Nina"})
+
+    assert premiere.status_code == 200
+    # La seconde réussit aussi : du point de vue du visiteur l'opération a
+    # abouti, et son ticket sort. Lui répondre une erreur le ferait partir en
+    # croyant avoir échoué. / Idempotent from the visitor's side.
+    assert seconde.status_code == 200
+    assert JobImpression.objects.filter(capsule__uuid=uuid).count() == 1
+
+
+@pytest.mark.django_db
+def test_le_repli_audio_annonce_son_vrai_type(capsule, monkeypatch):
+    """Quand ffmpeg échoue, c'est le fichier d'origine qui est servi. L'annoncer
+    en `audio/mp4` était pire que de ne rien annoncer : le navigateur refuse de
+    décoder un fichier dont le type ne correspond pas, sans jamais essayer
+    autre chose — et le mode dégradé promis par I1 ne fonctionnait pas.
+    / Mislabelling the fallback made the browser refuse to decode it."""
+    monkeypatch.setattr(
+        "capsules.publication.subprocess.run",
+        lambda *a, **k: (_ for _ in ()).throw(OSError("ffmpeg absent")),
+    )
+    capsule.audio_original.name = "capsules/x/original_capsule.webm"
+    capsule.save()
+
+    publier(capsule)
+    capsule.refresh_from_db()
+
+    assert not capsule.audio_diffusion
+    assert capsule.type_mime_a_servir == "audio/webm"
+
+
+@pytest.mark.django_db
+def test_une_photo_en_noir_et_blanc_n_empeche_pas_le_ticket(
+    capsule, une_photo_en_noir_et_blanc
+):
+    """Une photo en niveaux de gris traversait la purge EXIF en mode `L` ; le
+    pilote, qui indexe trois canaux par pixel, levait alors une IndexError. La
+    capsule était publiée mais son ticket ne sortait jamais, et chaque relance
+    échouait à l'identique.
+    / A greyscale photo made every print attempt fail with an IndexError."""
+    from capsules.photos import purger_les_exif
+    from impression.escpos_builder import construire_le_ticket
+
+    capsule.photo.save(
+        "mono.jpg", purger_les_exif(une_photo_en_noir_et_blanc), save=True
+    )
+
+    octets = construire_le_ticket(capsule, 576, "https://x.example/c/1")
+    assert len(octets) > 100, "le ticket n'a pas été construit"

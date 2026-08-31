@@ -65,6 +65,17 @@ class MockBackend(PrinterBackend):
     def can_print(self) -> tuple[bool, str]:
         return True, ""
 
+    def est_en_ligne(self) -> tuple[bool, str]:
+        """Toujours FAUX, et c'est le seul comportement honnete.
+
+        Sans identifiants Sunmi, ce backend prend la main et n'imprime rien.
+        Repondre « en ligne » ferait promettre un ticket a chaque visiteur
+        d'une borne qui n'en sortira jamais — ce que la specification appelle
+        le pire echec du parcours.
+        / Answering "online" would promise a ticket the borne can never print.
+        """
+        return False, "Imprimante simulée : le ticket ne sortira pas."
+
     def print_ticket(self, capsule, url_capsule: str) -> str:
         octets = construire_le_ticket(capsule, self.borne.dots_par_ligne, url_capsule)
         cadre = ["+" + "-" * LARGEUR_CADRE + "+"]

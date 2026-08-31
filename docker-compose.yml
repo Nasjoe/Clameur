@@ -27,24 +27,33 @@ services:
 
   web:
     build: .
-    command: uv run python manage.py runserver 0.0.0.0:8000
+    command: python manage.py runserver 0.0.0.0:8000
     volumes:
       - .:/app
       - medias:/app/medias
     ports:
       - "8000:8000"
     env_file: [.env]
+    # Une variable posee devant `docker compose` n'entre pas dans le conteneur
+    # sans cette clause : `make run` annoncait un mode DEBUG qu'il ne forcait
+    # pas. Un `.env` avec DEBUG=false demontait alors la route /medias/, et
+    # plus aucune capsule ne s'ecoutait en local.
+    # / Without this clause the DEBUG prefix on `make run` did nothing.
+    environment:
+      DEBUG: "${DEBUG:-true}"
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}
 
   celery:
     build: .
-    command: uv run celery -A clameur worker -l info
+    command: celery -A clameur worker -l info
     volumes:
       - .:/app
       - medias:/app/medias
     env_file: [.env]
+    environment:
+      DEBUG: "${DEBUG:-true}"
     depends_on:
       db: {condition: service_healthy}
       redis: {condition: service_healthy}

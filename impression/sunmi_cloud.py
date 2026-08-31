@@ -16,6 +16,11 @@ from impression.sunmi_cloud_printer import SunmiCloudPrinter
 
 logger = logging.getLogger(__name__)
 
+# L'etat de l'imprimante est une information de confort : mieux vaut
+# l'ignorer que faire attendre le visiteur.
+# / Printer state is a comfort: better skipped than kept waiting for.
+DELAI_ETAT_IMPRIMANTE = 3
+
 
 class SunmiCloudBackend(PrinterBackend):
     def __init__(self, borne):
@@ -49,7 +54,14 @@ class SunmiCloudBackend(PrinterBackend):
         if not possible:
             return False, message
         try:
-            reponse = self._pilote().onlineStatus(self.borne.numero_serie_imprimante)
+            # Trois secondes, pas dix : cet appel est fait dans le rendu de la
+            # page d'accueil de la borne. Avec trois workers gunicorn et une
+            # file de visiteurs, une API Sunmi qui ne repond plus bloquerait
+            # une requete sur deux pendant dix secondes.
+            # / Three seconds, not ten: this runs inside the page render.
+            pilote = self._pilote()
+            pilote.DELAI_RESEAU = DELAI_ETAT_IMPRIMANTE
+            reponse = pilote.onlineStatus(self.borne.numero_serie_imprimante)
         except Exception as erreur:
             logger.warning("onlineStatus injoignable : %s", erreur)
             return False, "Imprimante injoignable."
@@ -62,7 +74,17 @@ class SunmiCloudBackend(PrinterBackend):
         pilote.appendRawData(
             construire_le_ticket(capsule, self.borne.dots_par_ligne, url_capsule)
         )
-        numero = f"{self.borne.numero_serie_imprimante}_{int(time.time())}"
+        # L'UUID DE LA CAPSULE, PAS SEULEMENT L'HORLOGE. Deux publications dans
+        # la meme seconde sur la meme borne — courant au plus fort d'un
+        # evenement — produisaient le meme numero. Or Sunmi deduplique sur ce
+        # numero : l'un des deux tickets ne serait pas sorti, et `printStatus`
+        # serait devenu ambigu.
+        # / Two publications in the same second produced the same trade_no, and
+        #   Sunmi deduplicates on it.
+        numero = (
+            f"{self.borne.numero_serie_imprimante}"
+            f"_{capsule.uuid.hex[:8]}_{int(time.time())}"
+        )
         pilote.pushContent(
             trade_no=numero,
             sn=self.borne.numero_serie_imprimante,

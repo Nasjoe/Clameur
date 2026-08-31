@@ -4,6 +4,7 @@ import mimetypes
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
 from dotenv import load_dotenv
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -12,8 +13,15 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # / override=False: variables injected by docker-compose win over the .env file
 load_dotenv(BASE_DIR / ".env", override=False)
 
-SECRET_KEY = os.environ.get("SECRET_KEY", "cle-de-developpement-non-secrete")
-DEBUG = os.environ.get("DEBUG", "true").lower() in ("true", "1", "yes")
+CLE_DE_DEVELOPPEMENT = "cle-de-developpement-non-secrete"
+SECRET_KEY = os.environ.get("SECRET_KEY", CLE_DE_DEVELOPPEMENT)
+
+# DEFAUT `false`, ET C'EST DELIBERE. Un oubli dans le `.env` doit produire un
+# site sur, pas un site bavard : en DEBUG, les traces d'exception partent aux
+# visiteurs et les fichiers statiques perdent leur empreinte alors que nginx
+# les sert avec un cache d'un an.
+# / Default false: a forgotten variable must yield a safe site, not a chatty one.
+DEBUG = os.environ.get("DEBUG", "false").lower() in ("true", "1", "yes")
 ALLOWED_HOSTS = [
     hote.strip()
     for hote in os.environ.get("ALLOWED_HOSTS", "localhost,127.0.0.1,web").split(",")
@@ -156,6 +164,13 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 # / The absolute URL printed in the ticket's QR code.
 URL_PUBLIQUE = os.environ.get("URL_PUBLIQUE", "http://localhost:8000")
 
+# Obligations d'hebergeur (LCEN). Sans ces deux valeurs, personne ne peut
+# signaler une clameur : la page des mentions le dit alors franchement plutot
+# que d'afficher une adresse qui n'existe pas.
+# / Without these, nobody can report a clameur; the page says so plainly.
+EDITEUR = os.environ.get("EDITEUR", "")
+CONTACT = os.environ.get("CONTACT", "")
+
 REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 
 # Celery. La publication n'en depend jamais (invariant I2) : un enqueue qui
@@ -194,6 +209,13 @@ MISTRAL_MODELE_TRANSCRIPTION = "voxtral-mini-latest"
 MISTRAL_MODELE_TAGS = "mistral-small-latest"
 MISTRAL_MODELE_EMBEDDING = "mistral-embed"
 MISTRAL_DIMENSIONS_EMBEDDING = 1024
+
+if not DEBUG and SECRET_KEY == CLE_DE_DEVELOPPEMENT:
+    raise ImproperlyConfigured(
+        "SECRET_KEY absente du .env alors que DEBUG est faux. Le site "
+        "tournerait avec la clé de développement, publiée dans le dépôt : "
+        "les sessions et les jetons CSRF de tout le monde seraient forgeables."
+    )
 
 LOGGING = {
     "version": 1,

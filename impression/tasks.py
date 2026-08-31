@@ -34,6 +34,17 @@ def url_de_la_capsule(capsule) -> str:
 @shared_task
 def envoyer_le_ticket(job_pk: int) -> str:
     job = JobImpression.objects.select_related("capsule", "borne").get(pk=job_pk)
+
+    # CELERY REDELIVRE LES TACHES INTERROMPUES (`task_acks_late`). Sans ce
+    # garde, un redemarrage au mauvais moment — un redeploiement, un worker
+    # tue — ferait repartir l'envoi et sortir un second ticket identique. Le
+    # papier, lui, ne se rembobine pas.
+    # / acks_late redelivers interrupted tasks: without this guard a redeploy
+    #   would print the same ticket twice.
+    if job.statut == StatutJob.ENVOYE:
+        logger.info("ticket %s deja envoye, on ne le rejoue pas", job.pk)
+        return job.statut
+
     backend = choisir_le_backend(job.borne)
 
     possible, message = backend.can_print()

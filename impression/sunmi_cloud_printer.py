@@ -15,7 +15,9 @@ QUATRE CORRECTIONS APPLIQUEES A LA COPIE :
      job echoue passait donc pour envoye.
   4. onlineStatus/printStatus/clearPrintJob/pushContent ne retournaient rien.
      Sans valeur de retour, le controle d'etat de l'imprimante est irrealisable.
-/ Four fixes: timeout, logging, HTTP status check, return values.
+  5. Le calcul de niveau de gris debordait sur uint8 : un pixel blanc rendait
+     7 au lieu de 255, et les zones claires des photos sortaient noires.
+/ Five fixes: timeout, logging, HTTP status, return values, greyscale overflow.
 """
 
 import logging
@@ -97,6 +99,11 @@ class SunmiCloudPrinter:
         if not self._printer_sn:
             raise ValueError("PRINTER_SN must be provided either as a parameter or in the .env file")
 
+        # Delai reseau par defaut, surchargeable par appelant : la page
+        # d'accueil de la borne ne peut pas se permettre d'attendre dix
+        # secondes. / Overridable per caller: the welcome page cannot wait.
+        self.DELAI_RESEAU = 10
+
         random.seed()
 
     @property
@@ -166,7 +173,7 @@ class SunmiCloudPrinter:
             url=url,
             data=body_data.encode('utf-8'),
             headers=headers,
-            timeout=10,
+            timeout=getattr(self, 'DELAI_RESEAU', 10),
         )
 
         # CORRECTION 3 — controler le code HTTP puis le code applicatif Sunmi.
@@ -708,7 +715,14 @@ class SunmiCloudPrinter:
                 r = data[y][x][0]
                 g = data[y][x][1]
                 b = data[y][x][2]
-                gray_data[y][x] = ((r * 11 + g * 16 + b * 5) // 32) & 0xff
+                # CORRECTION 5 — les composantes arrivent en uint8 : la somme
+                # ponderee deborde des que le pixel est clair. Mesure faite,
+                # un blanc pur (255, 255, 255) rendait 7 au lieu de 255 : les
+                # zones claires d'une photo ressortaient noires, et tout le
+                # tramage etait faux.
+                # / uint8 components overflow on the weighted sum: pure white
+                #   yielded 7 instead of 255, inverting every light area.
+                gray_data[y][x] = ((int(r) * 11 + int(g) * 16 + int(b) * 5) // 32) & 0xFF
         return gray_data
 
     # Append an image.

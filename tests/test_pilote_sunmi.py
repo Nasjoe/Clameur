@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from impression.sunmi_cloud_printer import DIFFUSE_DITHER, THRESHOLD_DITHER, SunmiCloudPrinter
+from impression.sunmi_cloud_printer import DIFFUSE_DITHER, SunmiCloudPrinter
 
 
 def pilote_de_test():
@@ -61,15 +61,26 @@ def test_un_refus_applicatif_de_sunmi_leve_une_exception():
             pilote_de_test().onlineStatus("SN")
 
 
-def test_le_tramage_par_diffusion_n_est_pas_le_defaut():
-    """Garde-fou : le defaut du pilote est le seuillage, qui sort une photo en
-    aplats noirs illisibles. Le builder DOIT passer DIFFUSE_DITHER explicitement.
-    / The driver defaults to thresholding, unusable for a photo."""
-    assert DIFFUSE_DITHER != THRESHOLD_DITHER
-    import inspect
+@pytest.mark.django_db
+def test_le_builder_demande_le_tramage_par_diffusion(capsule, une_photo):
+    """Le defaut du pilote est le seuillage, qui sort une photo en aplats noirs
+    illisibles. Ce test verifie que NOTRE builder impose la diffusion — retirer
+    `mode=DIFFUSE_DITHER` de escpos_builder.py doit le faire echouer.
+    / Checks our builder, not the driver's default: removing the explicit mode
+      must break this test."""
+    from unittest.mock import patch
 
-    signature = inspect.signature(SunmiCloudPrinter.appendImage)
-    assert signature.parameters["mode"].default == THRESHOLD_DITHER
+    from impression.escpos_builder import construire_le_ticket
+
+    capsule.photo.save("photo.jpg", une_photo, save=True)
+
+    with patch.object(SunmiCloudPrinter, "appendImage") as fausse_image:
+        construire_le_ticket(capsule, 576, "https://x.example/c/1")
+
+    assert fausse_image.called, "la photo n'a pas ete posee sur le ticket"
+    assert fausse_image.call_args.kwargs["mode"] == DIFFUSE_DITHER, (
+        "tramage par seuillage : la photo sortira en aplats noirs"
+    )
 
 
 def test_le_contenu_du_ticket_part_en_hexadecimal():
@@ -81,3 +92,20 @@ def test_le_contenu_du_ticket_part_en_hexadecimal():
         pilote.pushContent(trade_no="t1", sn="SN", count=1)
     corps = faux_post.call_args.kwargs["data"].decode("utf-8")
     assert b"bonjour".hex() in corps
+
+
+def test_le_calcul_de_gris_ne_deborde_pas():
+    """Les composantes arrivent en `uint8` : la somme pondérée débordait dès
+    que le pixel était clair. Un blanc pur rendait 7 au lieu de 255, donc les
+    zones claires d'une photo ressortaient noires sur le papier.
+    / uint8 components overflowed: pure white yielded 7 instead of 255."""
+    import numpy as np
+    from PIL import Image
+
+    blanc = Image.new("RGB", (4, 4), (255, 255, 255))
+    gris = pilote_de_test().convertToGray(blanc)
+
+    assert int(np.asarray(gris).max()) == 255, "un blanc pur doit rester blanc"
+
+    noir = Image.new("RGB", (4, 4), (0, 0, 0))
+    assert int(np.asarray(pilote_de_test().convertToGray(noir)).max()) == 0

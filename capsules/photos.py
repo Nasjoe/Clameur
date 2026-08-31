@@ -19,7 +19,14 @@ def purger_les_exif(fichier) -> io.BytesIO:
     image = Image.open(fichier)
     image = ImageOps.exif_transpose(image)
 
-    if image.mode not in ("RGB", "L"):
+    # TOUJOURS EN RGB, y compris depuis un niveau de gris. Le pilote de
+    # l'imprimante indexe trois canaux par pixel : une image en mode `L` lui
+    # donne un tableau a deux dimensions et le fait lever une IndexError. La
+    # capsule serait publiee, mais son ticket ne sortirait jamais, et chaque
+    # relance echouerait a l'identique.
+    # / Always RGB, greyscale included: the printer driver indexes three
+    #   channels and an `L` image would make every print attempt fail.
+    if image.mode != "RGB":
         image = image.convert("RGB")
 
     # Recreer l'image depuis ses seuls pixels : rien d'autre ne survit.

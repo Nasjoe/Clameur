@@ -64,13 +64,36 @@ def test_une_clameur_retiree_disparait_du_ciel(client, corpus_projete):
     assert str(retiree.uuid) not in contenu, "le kill switch ne vide pas le ciel"
 
 
+def _ecart_circulaire(a: int, b: int) -> int:
+    """L'écart entre deux teintes sur la roue chromatique.
+
+    Une soustraction ordinaire est fausse ici : 350 et 45 sont voisins à l'œil,
+    mais leur différence vaut 305. L'ancien test concluait au contraste sur
+    cette base, et validait donc une propriété qui n'existait pas.
+    / A plain subtraction is wrong: 350 and 45 look adjacent but differ by 305.
+    """
+    ecart = abs(a - b) % 360
+    return min(ecart, 360 - ecart)
+
+
 def test_deux_positions_voisines_donnent_des_teintes_voisines():
     """La couleur prolonge la carte : sans cela, un même amas virerait au
     bariolé alors que la page promet que les voisines se ressemblent."""
-    proche = abs(_teinte_de_la_position(0.80, 0.50) - _teinte_de_la_position(0.82, 0.52))
-    oppose = abs(_teinte_de_la_position(0.80, 0.50) - _teinte_de_la_position(0.20, 0.50))
-    assert proche < 15
-    assert oppose > 120
+    assert _ecart_circulaire(
+        _teinte_de_la_position(0.80, 0.50), _teinte_de_la_position(0.82, 0.52)
+    ) < 15
+
+
+def test_deux_amas_opposes_se_distinguent_sans_quitter_la_famille_chaude():
+    """L'arc chaud ne fait que 110° : deux points diamétralement opposés sont
+    donc distants d'au plus 55°, jamais complémentaires. C'est le prix assumé
+    d'un ciel qui ne pose ni vert ni bleu sur un papier brun — mais la
+    distinction doit rester visible.
+    / The warm arc spans 110°, so opposite points differ by at most 55°."""
+    ecart = _ecart_circulaire(
+        _teinte_de_la_position(0.80, 0.50), _teinte_de_la_position(0.20, 0.50)
+    )
+    assert 35 < ecart <= 55, f"écart de {ecart}° : les amas ne se distinguent plus"
 
 
 def test_la_projection_refuse_de_travailler_sur_trop_peu(db, capsule_publiee):

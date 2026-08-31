@@ -100,6 +100,30 @@ class Capsule(models.Model):
         return f"{self.pseudo or 'anonyme'} — {self.creee_le:%d/%m/%Y %H:%M}"
 
     @property
+    def type_mime_a_servir(self) -> str:
+        """Le type du fichier reellement servi.
+
+        Annoncer `audio/mp4` sur le repli serait pire que de ne rien annoncer :
+        quand ffmpeg a echoue, c'est le webm ou l'ogg d'origine qui part, et un
+        navigateur a qui l'on ment sur le type refuse de le decoder sans jamais
+        essayer autre chose. Le mode degrade promis par l'invariant I1 ne
+        fonctionnerait pas.
+        / Mislabelling the fallback is worse than saying nothing: the browser
+          would refuse to decode it and never try anything else.
+        """
+        if self.audio_diffusion:
+            return "audio/mp4"
+        nom = (self.audio_original.name or "").lower()
+        for extension, type_mime in (
+            (".webm", "audio/webm"), (".ogg", "audio/ogg"), (".oga", "audio/ogg"),
+            (".m4a", "audio/mp4"), (".mp4", "audio/mp4"), (".wav", "audio/wav"),
+            (".mp3", "audio/mpeg"),
+        ):
+            if nom.endswith(extension):
+                return type_mime
+        return ""
+
+    @property
     def audio_a_servir(self):
         """Le fichier que la page de lecture doit servir.
         Repli sur l'original si la normalisation a echoue : mieux vaut un

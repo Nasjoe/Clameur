@@ -78,3 +78,103 @@ def test_le_mock_imprime_toujours(borne, capsule):
     possible, _ = MockBackend(borne).can_print()
     assert possible is True
     assert MockBackend(borne).print_ticket(capsule, "https://x.example/c/1").startswith("mock_")
+
+
+# --------------------------------------------------- la file d'impression
+
+@pytest.mark.django_db
+def test_un_ticket_envoye_n_est_jamais_rejoue(capsule, borne):
+    """Celery redélivre les tâches interrompues (`acks_late`). Sans garde, un
+    redéploiement au mauvais moment ferait sortir un second ticket identique —
+    et le papier ne se rembobine pas.
+    / acks_late redelivers interrupted tasks; the paper does not rewind."""
+    from unittest.mock import patch
+
+    from impression.models import JobImpression, StatutJob
+    from impression.tasks import envoyer_le_ticket
+
+    job = JobImpression.objects.create(
+        capsule=capsule, borne=borne, statut=StatutJob.ENVOYE, trade_no="deja"
+    )
+    with patch("impression.tasks.choisir_le_backend") as backend:
+        assert envoyer_le_ticket(job.pk) == StatutJob.ENVOYE
+    assert not backend.called, "le ticket a été réimprimé"
+
+
+@pytest.mark.django_db
+def test_un_backend_qui_refuse_marque_le_job_en_echec(
+    capsule, borne_sans_imprimante, monkeypatch
+):
+    """Les identifiants sont posés pour que le backend RÉEL soit choisi : sans
+    eux, c'est le backend de simulation qui prend la main, et lui imprime
+    toujours. / Credentials set so the real backend is picked."""
+    from impression.models import JobImpression, StatutJob
+    from impression.tasks import envoyer_le_ticket
+
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+
+    job = JobImpression.objects.create(capsule=capsule, borne=borne_sans_imprimante)
+    assert envoyer_le_ticket(job.pk) == StatutJob.ECHOUE
+
+    job.refresh_from_db()
+    assert job.tentatives == 1
+    assert job.message_erreur, "l'échec doit dire pourquoi"
+
+
+@pytest.mark.django_db
+def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, borne, monkeypatch):
+    """`trade_no` sert à interroger `printStatus` : sans lui, on ne peut plus
+    savoir si le papier est sorti."""
+    from impression.models import JobImpression, StatutJob
+    from impression.tasks import envoyer_le_ticket
+
+    class BackendQuiImprime:
+        def can_print(self):
+            return True, ""
+
+        def print_ticket(self, capsule, url):
+            return "N411_abcd1234_1700000000"
+
+    monkeypatch.setattr("impression.tasks.choisir_le_backend", lambda b: BackendQuiImprime())
+    job = JobImpression.objects.create(capsule=capsule, borne=borne)
+
+    assert envoyer_le_ticket(job.pk) == StatutJob.ENVOYE
+    job.refresh_from_db()
+    assert job.trade_no == "N411_abcd1234_1700000000"
+
+
+@pytest.mark.django_db
+def test_deux_tickets_de_la_meme_seconde_ont_des_numeros_differents(
+    capsule, borne, monkeypatch
+):
+    """Sunmi déduplique sur le numéro : deux publications dans la même seconde
+    sur la même borne — courant au plus fort d'un événement — auraient produit
+    le même, et un des deux tickets ne serait pas sorti.
+    / Sunmi deduplicates on trade_no; identical numbers lose a ticket."""
+    from unittest.mock import patch
+
+    from capsules.models import Capsule
+
+    autre = Capsule.objects.create(borne=borne, audio_original=capsule.audio_original)
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+
+    backend = SunmiCloudBackend(borne)
+    with patch("impression.sunmi_cloud.time.time", return_value=1700000000), \
+         patch.object(SunmiCloudBackend, "_pilote"), \
+         patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
+        premier = backend.print_ticket(capsule, "https://x.example/c/1")
+        second = backend.print_ticket(autre, "https://x.example/c/2")
+
+    assert premier != second
+
+
+@pytest.mark.django_db
+def test_le_backend_de_simulation_ne_se_dit_jamais_en_ligne(borne):
+    """Sans identifiants Sunmi, ce backend prend la main et n'imprime rien.
+    Répondre « en ligne » ferait promettre un ticket à chaque visiteur d'une
+    borne qui n'en sortira jamais."""
+    en_ligne, message = MockBackend(borne).est_en_ligne()
+    assert en_ligne is False
+    assert "simulée" in message

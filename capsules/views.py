@@ -7,6 +7,7 @@ import segno
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
 from django.core.cache import cache
+from django.db import transaction
 from django.db.models import F
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -29,6 +30,16 @@ NOMBRE_MAX_DE_TAGS = 2
 # constellation n'est pas un moteur de recherche : c'est une vue d'ensemble.
 # / Beyond this the sky is unreadable; it is an overview, not a search engine.
 PLAFOND_CONSTELLATION = 600
+
+# Une journee. Au-dela, la valeur est forgee : on la ramene sans refuser
+# l'enregistrement, qui lui est bien reel.
+# / Beyond a day the value is forged; clamp it rather than reject the audio.
+PLAFOND_DUREE_ANNONCEE = 86400
+
+# Vingt-quatre heures : reecouter le lendemain compte pour une nouvelle
+# ecoute, recharger la page dix fois dans l'heure non.
+# / A day: listening again tomorrow counts, reloading ten times does not.
+DUREE_MEMOIRE_DES_ECOUTES = 86400
 
 # Le QR d'invitation ne change que si la borne change : inutile de le
 # regenerer pour chaque visiteur.
@@ -58,9 +69,15 @@ def interroger_l_imprimante(borne) -> dict:
     l'API Sunmi. / Without this cache every visitor would hit the Sunmi API.
     """
     cle = f"imprimante:{borne.slug}"
-    etat = cache.get(cle)
-    if etat is not None:
-        return etat
+    # Un cache indisponible ne doit pas faire tomber la page d'accueil de la
+    # borne : on interroge, et on continue sans lui s'il ne repond pas.
+    # / An unavailable cache must not take the borne's welcome page down.
+    try:
+        etat = cache.get(cle)
+        if etat is not None:
+            return etat
+    except Exception:
+        logger.warning("cache indisponible pour l'etat de l'imprimante")
 
     from impression.tasks import choisir_le_backend
 
@@ -71,7 +88,10 @@ def interroger_l_imprimante(borne) -> dict:
         en_ligne, message = backend.can_print()
 
     etat = {"en_ligne": en_ligne, "message": message}
-    cache.set(cle, etat, DUREE_DU_CACHE_IMPRIMANTE)
+    try:
+        cache.set(cle, etat, DUREE_DU_CACHE_IMPRIMANTE)
+    except Exception:
+        logger.warning("cache indisponible : etat de l'imprimante non memorise")
     return etat
 
 
@@ -117,33 +137,66 @@ def creer_capsule(request, slug):
     capsule = Capsule.objects.create(
         borne=borne,
         audio_original=fichier,
-        duree_secondes=int(float(request.POST.get("duree", 0) or 0)),
+        duree_secondes=_duree_annoncee(request.POST.get("duree")),
     )
     return JsonResponse({"uuid": str(capsule.uuid)})
 
 
+def _duree_annoncee(valeur) -> int:
+    """La duree telle que le client la declare, ramenee a quelque chose de sain.
+
+    Elle arrive d'un POST public : `NaN`, `inf`, `1e300` ou un nombre negatif
+    (un telephone qui resynchronise son horloge pendant l'enregistrement)
+    faisaient tous un 500 — et le visiteur perdait sa voix sur une erreur
+    qu'il ne pouvait ni comprendre ni contourner.
+    / It comes from a public POST: NaN, inf and negative values all 500'd, and
+      the visitor lost their recording to an error they could not act on.
+    """
+    try:
+        secondes = int(float(valeur or 0))
+    except (TypeError, ValueError, OverflowError):
+        return 0
+    return max(0, min(secondes, PLAFOND_DUREE_ANNONCEE))
+
+
 @require_POST
 def publier_capsule(request, uuid):
-    capsule = get_object_or_404(Capsule, uuid=uuid)
-    if capsule.statut != StatutCapsule.BROUILLON:
-        return JsonResponse({"erreur": _("Capsule déjà publiée.")}, status=409)
-
     if limite_atteinte(request, "publication"):
         return JsonResponse({"erreur": _("Trop de publications.")}, status=429)
 
-    capsule.pseudo = (request.POST.get("pseudo") or "").strip()[:80]
+    # UN VERROU SUR LA LIGNE, PAS UNE SIMPLE LECTURE. Deux POST concurrents —
+    # deux onglets, ou un reseau qui coupe pendant la reponse et un visiteur
+    # qui reappuie — passaient tous deux le controle de statut avant le
+    # premier enregistrement : deux normalisations, deux jobs, DEUX TICKETS.
+    # Le verrou ne bloque que les requetes portant sur cette capsule-la.
+    # / A row lock, not a read: two concurrent POSTs printed two tickets.
+    with transaction.atomic():
+        capsule = get_object_or_404(
+            Capsule.objects.select_for_update(), uuid=uuid
+        )
 
-    photo = request.FILES.get("photo")
-    if photo:
-        try:
-            capsule.photo.save(f"{capsule.uuid}.jpg", purger_les_exif(photo), save=False)
-        except Exception:
-            # Une photo illisible ne doit pas empecher de publier la voix.
-            # / An unreadable photo must not block publishing the voice.
-            logger.exception("photo inutilisable pour %s", capsule.uuid)
+        if capsule.statut != StatutCapsule.BROUILLON:
+            # Deja publiee : du point de vue du visiteur l'operation a reussi,
+            # et son ticket est en train de sortir. Lui repondre une erreur le
+            # ferait partir en croyant avoir echoue.
+            # / Already published: from the visitor's side it worked.
+            return JsonResponse({"uuid": str(capsule.uuid), "url": f"/c/{capsule.uuid}"})
 
-    _attacher_les_tags(capsule, request.POST.getlist("tags"))
-    publier(capsule)
+        capsule.pseudo = (request.POST.get("pseudo") or "").strip()[:80]
+
+        photo = request.FILES.get("photo")
+        if photo:
+            try:
+                capsule.photo.save(
+                    f"{capsule.uuid}.jpg", purger_les_exif(photo), save=False
+                )
+            except Exception:
+                # Une photo illisible ne doit pas empecher de publier la voix.
+                # / An unreadable photo must not block publishing the voice.
+                logger.exception("photo inutilisable pour %s", capsule.uuid)
+
+        _attacher_les_tags(capsule, request.POST.getlist("tags"))
+        publier(capsule)
 
     return JsonResponse({"uuid": str(capsule.uuid), "url": f"/c/{capsule.uuid}"})
 
@@ -183,6 +236,7 @@ def lire_capsule(request, uuid):
                 (capsule.transcription_raw or {}).get("segments") or []
             ),
             "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
+            "duree": _duree_lisible(capsule.duree_secondes),
         },
     )
 
@@ -209,9 +263,25 @@ def compter_une_ecoute(request, uuid):
     est-ce que les passants ecoutent vraiment ?
     / Called on play, never on page load: the only metric that matters.
     """
-    Capsule.objects.filter(uuid=uuid, statut=StatutCapsule.PUBLIEE).update(
-        nombre_ecoutes=F("nombre_ecoutes") + 1
-    )
+    # Une ecoute par session et par capsule. Sans cela, une boucle de `curl`
+    # porte une clameur a dix mille ecoutes — or ce compteur est la seule
+    # mesure qui dira si les passants scannent vraiment, et il dimensionne les
+    # etoiles du ciel. La deduplication cote navigateur ne protege de rien.
+    # / One play per session and capsule: the client-side dedupe protects nothing.
+    if not request.session.session_key:
+        request.session.save()
+    cle = f"ecoute:{request.session.session_key}:{uuid}"
+    try:
+        premiere_fois = cache.add(cle, 1, DUREE_MEMOIRE_DES_ECOUTES)
+    except Exception:
+        # Cache indisponible : on compte plutot que de perdre la mesure.
+        # / Cache down: count rather than lose the measurement.
+        premiere_fois = True
+
+    if premiere_fois:
+        Capsule.objects.filter(uuid=uuid, statut=StatutCapsule.PUBLIEE).update(
+            nombre_ecoutes=F("nombre_ecoutes") + 1
+        )
     return HttpResponse(status=204)
 
 
@@ -287,9 +357,12 @@ def invitation_a_enregistrer(request) -> dict | None:
         return None
 
     cle = f"invitation:{borne.slug}"
-    invitation = cache.get(cle)
-    if invitation is not None:
-        return invitation
+    try:
+        invitation = cache.get(cle)
+        if invitation is not None:
+            return invitation
+    except Exception:
+        logger.warning("cache indisponible pour l'invitation")
 
     url = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:accueil_borne', args=[borne.slug])}"
     invitation = {
@@ -299,7 +372,10 @@ def invitation_a_enregistrer(request) -> dict | None:
         # exposee aux intemperies. / Medium correction: read from a screen.
         "qr_svg": segno.make(url, error="m").svg_inline(scale=8, border=0, dark="#0b0d14"),
     }
-    cache.set(cle, invitation, DUREE_DU_CACHE_INVITATION)
+    try:
+        cache.set(cle, invitation, DUREE_DU_CACHE_INVITATION)
+    except Exception:
+        logger.warning("cache indisponible : invitation non memorisee")
     return invitation
 
 
@@ -311,6 +387,7 @@ def decrire_une_clameur(capsule) -> dict:
         "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
         "duree": _duree_lisible(capsule.duree_secondes),
         "audio": capsule.audio_a_servir.url if capsule.audio_a_servir else "",
+        "type_mime": capsule.type_mime_a_servir,
         "x": round(capsule.position_x or 0.5, 4),
         "y": round(capsule.position_y or 0.5, 4),
         "teinte": _teinte_de_la_position(capsule.position_x or 0.5, capsule.position_y or 0.5),
@@ -348,4 +425,8 @@ def _teinte_de_la_position(x: float, y: float) -> int:
 
 @require_GET
 def mentions_legales(request):
-    return render(request, "capsules/mentions_legales.html")
+    return render(
+        request,
+        "capsules/mentions_legales.html",
+        {"editeur": settings.EDITEUR, "contact": settings.CONTACT},
+    )

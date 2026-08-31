@@ -19,9 +19,9 @@
       </div>
     </details>
   {% elif capsule.erreur_enrichissement %}
-    <p class="attente" title="{{ capsule.erreur_enrichissement }}">
-      {% translate "Transcription indisponible." %}
-    </p>
+    {# Le detail de l'erreur reste en console : il contient des chemins
+       internes et des messages de bibliotheques. #}
+    <p class="attente">{% translate "Transcription indisponible." %}</p>
   {% else %}
     <!-- La fiche s'affiche SANS ATTENDRE la transcription. Le texte arrivera
          par WebSocket quand Voxtral aura fini, sans rechargement.

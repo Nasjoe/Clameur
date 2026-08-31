@@ -10,7 +10,12 @@ dependencies = [
     "pgvector>=0.3",
     "celery[redis]>=5.4",
     "redis>=5.0",
-    "mistralai>=1.0",
+    # BORNE HAUTE ET BASSE. Le code importe `from mistralai.client import
+    # Mistral`, qui n'existe qu'en v2 : une resolution sur une 1.x ferait
+    # echouer la transcription en boucle, rattrapee par un `except` — donc
+    # des capsules publiees et jamais enrichies, sans erreur visible.
+    # / The v2-only import would fail silently on a 1.x resolution.
+    "mistralai>=2.9,<3",
     "pillow>=11",
     "requests>=2.32",
     "numpy>=2",

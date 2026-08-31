@@ -54,7 +54,7 @@
   <div>
     <h1>{{ capsule.pseudo|default:_("Anonyme") }}</h1>
     {% comment %}Duree annoncee AVANT la lecture : on ne trahit pas le temps du passant.{% endcomment %}
-    <p class="doux">{{ capsule.duree_secondes }} {% translate "secondes" %}</p>
+    <p class="doux">{{ duree }}</p>
   </div>
 
   {% if tags %}
@@ -71,7 +71,7 @@
   </button>
   <div class="puits-lecteur" id="puits" hidden>
     <audio id="lecteur" preload="none" controls>
-      <source src="{{ capsule.audio_a_servir.url }}" type="audio/mp4">
+      <source src="{{ capsule.audio_a_servir.url }}"{% if capsule.type_mime_a_servir %} type="{{ capsule.type_mime_a_servir }}"{% endif %}>
     </audio>
   </div>
 

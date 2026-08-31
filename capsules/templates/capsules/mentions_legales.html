@@ -17,12 +17,22 @@
   <h1>{% translate "Mentions légales" %}</h1>
 
   <h2>{% translate "Éditeur" %}</h2>
-  <p class="doux">{% translate "À compléter avant toute mise en ligne publique." %}</p>
+  {% if editeur %}
+    <p class="doux">{{ editeur }}</p>
+  {% else %}
+    <p class="carte avis">{% translate "Éditeur non renseigné." %}</p>
+  {% endif %}
 
   <h2>{% translate "Signaler une clameur" %}</h2>
-  <p class="doux">
-    {% translate "Toute capsule peut être retirée sur demande. Écrivez à l'adresse de contact ci-dessus en indiquant le lien du ticket." %}
-  </p>
+  {% if contact %}
+    <p class="doux">
+      {% blocktranslate %}Toute capsule peut être retirée sur demande. Écrivez à {{ contact }} en indiquant le lien du ticket.{% endblocktranslate %}
+    </p>
+  {% else %}
+    <p class="carte avis">
+      {% translate "Aucune adresse de contact n'est configurée : les signalements ne peuvent pas être reçus." %}
+    </p>
+  {% endif %}
 
   <h2>{% translate "Ce que le site conserve" %}</h2>
   <p class="doux">

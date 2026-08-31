@@ -1,0 +1,23 @@
+# Le contexte de build finit dans une couche de l'image. Tout ce qui est ici
+# reste dehors — a commencer par le .env, que `docker history` restituerait.
+# / The build context lands in an image layer; .env would be recoverable.
+.env
+.env.*
+!.env.example
+
+.git
+.gitignore
+.venv
+__pycache__/
+*.py[cod]
+
+# Donnees et artefacts : reconstruits ou montes en volume.
+medias/
+staticfiles/
+.pytest_cache/
+.ruff_cache/
+.hallmark/
+docs/superpowers/
+
+# Le venv de l'hote est bati pour une autre version de Python que l'image.
+# / The host venv targets a different Python than the image.

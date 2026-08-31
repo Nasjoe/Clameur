@@ -7,6 +7,7 @@ import tempfile
 from pathlib import Path
 
 from django.core.files import File
+from django.db import transaction
 from django.utils import timezone
 
 from capsules.models import StatutCapsule
@@ -107,8 +108,19 @@ def publier(capsule) -> None:
     # Redis n'est pas une dependance de la publication. S'il est mort, la
     # capsule est publiee et ecoutable, et l'operateur relance depuis la
     # console. / Redis is not a dependency of publishing.
-    _enfiler_sans_risque(lambda: envoyer_le_ticket.delay(job.pk), "impression")
-    _enfiler_sans_risque(lambda: transcrire.delay(str(capsule.uuid)), "transcription")
+    # APRES LE COMMIT, JAMAIS AVANT. Un worker Celery est un autre process
+    # avec sa propre connexion : enfiler dans une transaction encore ouverte
+    # lui ferait chercher une capsule que sa transaction ne voit pas encore.
+    # Hors transaction, `on_commit` s'execute immediatement — le code est donc
+    # correct dans les deux cas.
+    # / A worker is another process: queueing inside an open transaction would
+    #   send it looking for a row it cannot see yet.
+    transaction.on_commit(
+        lambda: _enfiler_sans_risque(lambda: envoyer_le_ticket.delay(job.pk), "impression")
+    )
+    transaction.on_commit(
+        lambda: _enfiler_sans_risque(lambda: transcrire.delay(str(capsule.uuid)), "transcription")
+    )
 
 
 def _enfiler_sans_risque(envoi, nom_de_la_tache: str) -> None:

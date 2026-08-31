@@ -55,8 +55,8 @@ du projet.
 
 ## Démarrer
 
-Il faut Docker et [uv](https://docs.astral.sh/uv/). **Rien d'autre** — ni
-Python, ni ffmpeg, ni PostgreSQL sur le poste.
+**Docker, et rien d'autre.** Ni Python, ni uv, ni ffmpeg, ni PostgreSQL sur
+le poste : tout vit dans les conteneurs.
 
 ```bash
 cp .env.example .env

@@ -419,7 +419,7 @@ requires-dist = [
     { name = "django", specifier = ">=6" },
     { name = "django-htmx", specifier = ">=1.27" },
     { name = "gunicorn", specifier = ">=23" },
-    { name = "mistralai", specifier = ">=1.0" },
+    { name = "mistralai", specifier = ">=2.9,<3" },
     { name = "numpy", specifier = ">=2" },
     { name = "pgvector", specifier = ">=0.3" },
     { name = "pillow", specifier = ">=11" },

@@ -11,6 +11,29 @@ from capsules.models import Capsule, StatutCapsule
 
 
 @pytest.fixture(autouse=True)
+def cache_isole(settings):
+    """Les tests n'ecrivent jamais dans le Redis de travail.
+
+    `CACHES` pointe sur la base 0, partagee avec le courtier Celery et la
+    couche de canaux, et `cache.clear()` y execute un FLUSHDB. Lancer la suite
+    pendant que le serveur tourne effacait donc les taches en attente et les
+    connexions temps reel — un ticket en file disparaissait sans un mot.
+    / cache.clear() runs FLUSHDB on the database Celery also uses.
+    """
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "tests",
+        }
+    }
+    from django.core.cache import cache
+
+    cache.clear()
+    yield
+    cache.clear()
+
+
+@pytest.fixture(autouse=True)
 def statiques_sans_empreinte(settings):
     """Les tests ne passent jamais par `collectstatic`.
 
@@ -98,3 +121,26 @@ def corpus_pret(db):
     call_command("creer_des_clameurs", nombre=6, vider=True, verbosity=0)
     call_command("projeter_la_constellation", verbosity=0)
     return Capsule.objects.all()
+
+
+@pytest.fixture
+def une_photo():
+    """Une petite image JPEG, en couleurs. / A small colour JPEG."""
+    from PIL import Image
+
+    tampon = io.BytesIO()
+    Image.new("RGB", (120, 90), (180, 120, 70)).save(tampon, format="JPEG")
+    tampon.seek(0)
+    return SimpleUploadedFile("photo.jpg", tampon.getvalue(), content_type="image/jpeg")
+
+
+@pytest.fixture
+def une_photo_en_noir_et_blanc():
+    """Un JPEG en niveaux de gris — filtre « mono » d'un téléphone, ou un scan.
+    / A greyscale JPEG: a phone's mono filter, or a scan."""
+    from PIL import Image
+
+    tampon = io.BytesIO()
+    Image.new("L", (120, 90), 128).save(tampon, format="JPEG")
+    tampon.seek(0)
+    return SimpleUploadedFile("mono.jpg", tampon.getvalue(), content_type="image/jpeg")

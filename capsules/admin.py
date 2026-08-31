@@ -37,7 +37,15 @@ class CapsuleAdmin(admin.ModelAdmin):
 
     @admin.action(description=_("Republier"))
     def republier(self, request, queryset):
-        nombre = queryset.update(statut=StatutCapsule.PUBLIEE)
+        # SEULEMENT CE QUI A ETE RETIRE. Publier un brouillon par ce chemin le
+        # rendrait accessible sans etre jamais passe par `publier()` : pas
+        # d'audio normalise — donc muet sur iPhone —, pas de ticket, pas
+        # d'enrichissement.
+        # / Only withdrawn capsules: a draft published this way never went
+        #   through publier() and would be silent on iOS.
+        nombre = queryset.filter(statut=StatutCapsule.RETIREE).update(
+            statut=StatutCapsule.PUBLIEE
+        )
         self.message_user(request, _("%d clameur(s) republiée(s).") % nombre)
 
     @admin.action(description=_("Rejouer l'enrichissement"))

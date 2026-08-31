@@ -68,25 +68,38 @@ Le **numéro de série de l'imprimante n'est pas ici** : il se saisit sur la
 
 ## 4. Déployer
 
+Docker est le seul prérequis du serveur : ni Python, ni uv, ni ffmpeg à
+installer.
+
 ```bash
-uv lock                                          # 1
-docker compose -f docker-compose-prod.yml build  # 2
-docker compose -f docker-compose-prod.yml up -d  # 3
+docker compose -f docker-compose-prod.yml build
+docker compose -f docker-compose-prod.yml up -d
 docker compose -f docker-compose-prod.yml exec web python manage.py migrate
+docker compose -f docker-compose-prod.yml exec web python manage.py check --deploy
 docker compose -f docker-compose-prod.yml exec web python manage.py createsuperuser
 ```
 
-**Étape 1 — `uv lock` n'est pas optionnel.** Le Dockerfile fait
-`uv sync --frozen`, qui installe le fichier de verrouillage tel quel. Un
-`pyproject.toml` modifié sans relock installe **l'ancien jeu de dépendances,
-sans le moindre message**.
+**`check --deploy` refuse de passer** tant que `EDITEUR` et `CONTACT` ne sont
+pas renseignés : sans eux, personne ne peut signaler une clameur, alors que
+c'est le moyen technique de l'obligation de retrait de la LCEN. Il avertit
+aussi si `URL_PUBLIQUE` n'est pas en `https`.
 
-**Note sur `exec` :** dans les conteneurs de production, les commandes
-s'appellent directement (`python manage.py …`), **jamais via `uv run`**. Un
-wrapper `uv` intercepterait le `SIGTERM` destiné au worker Celery ; c'est aussi
-pourquoi `supervisord.conf` n'en utilise nulle part.
+**Ne modifie pas `pyproject.toml` sur le serveur.** Le Dockerfile fait
+`uv sync --frozen`, qui installe `uv.lock` tel quel : un `pyproject.toml`
+modifié sans relock préalable installerait **l'ancien jeu de dépendances, sans
+le moindre message**. Le verrouillage se fait sur la machine de développement
+(`make rebuild`), et le dépôt arrive ici avec un `uv.lock` à jour.
 
-`collectstatic` **est déjà fait au build** — n'y reviens pas.
+**Les commandes s'appellent directement** (`python manage.py …`), jamais via
+`uv run` : les binaires du venv sont dans le `PATH` de l'image, et un wrapper
+`uv` intercepterait le `SIGTERM` destiné au worker Celery. C'est aussi pourquoi
+`supervisord.conf` n'en utilise nulle part.
+
+`collectstatic` tourne **à chaque démarrage** du conteneur, dans
+`entrypoint-prod.sh`. Ce n'est pas une redondance avec le build : Docker ne
+recopie l'image dans un volume nommé que si celui-ci est **vide**, donc au
+tout premier `up` seulement. Sans ce passage, chaque redéploiement servirait
+les fichiers statiques de la version précédente, en silence.
 
 ## 5. Vérifier
 
@@ -104,6 +117,11 @@ docker compose -f docker-compose-prod.yml logs web | grep "spawned"
 curl -s -o /dev/null -w "%{http_code}\n" https://$DOMAIN/          # 200
 
 # d. LE TYPE MIME DE L'AUDIO — sinon lecteur muet à « 0:00 / 0:00 »
+#    (remplace <un-fichier> par un vrai chemin, visible dans l'admin)
+curl -sI https://$DOMAIN/medias/<un-fichier>.m4a \
+  | grep -i content-type                                          # audio/mp4
+
+# d bis. LE TYPE MIME DES POLICES — sinon le préchargement est ignoré
 curl -sI https://$DOMAIN/static/capsules/polices/plus-jakarta-sans-latin.woff2 \
   | grep -i content-type                                          # font/woff2
 
@@ -213,7 +231,7 @@ papier est sorti. En cas de doute, l'action « Interroger Sunmi » sur un
 | Aucun ticket ne sort | `SUNMI_APP_ID` / `SUNMI_APP_KEY` présents ? Sinon le backend de simulation prend la main et écrit dans les journaux. |
 | Capsules publiées mais jamais enrichies | `MISTRAL_API_KEY`, puis `docker compose logs celery` |
 | Le ciel est vide | `projeter_la_constellation` a-t-il tourné ? Une capsule sans position n'a pas d'étoile. |
-| Une page se comporte comme une version antérieure | statiques en cache : les fichiers portent leur empreinte, donc c'est un `collectstatic` manquant après un changement de code |
+| Une page se comporte comme une version antérieure | le volume `statiques` n'a pas été rafraîchi : vérifie que `entrypoint-prod.sh` s'exécute bien au démarrage (`docker compose logs web \| head`) |
 
 **Rien n'est perdu quand une dépendance tombe.** Les invariants garantissent
 qu'une capsule publiée reste écoutable même si Redis, Mistral et l'imprimante

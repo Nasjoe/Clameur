@@ -14,6 +14,13 @@
   "use strict";
 
   const config = window.CLAMEUR;
+
+  // Quand la borne est fermee, le gabarit ne rend aucun bouton : on sort avant
+  // d'essayer de leur attacher quoi que ce soit. Sans cela, tout visiteur de
+  // la page recoit une TypeError, et tout code ajoute plus bas ne s'execute
+  // jamais sur cette page.
+  // / A closed borne renders no buttons: bail out before wiring anything.
+  if (!document.getElementById("bouton-demarrer")) return;
   const ecran = {
     accueil: document.getElementById("etape-accueil"),
     enregistrement: document.getElementById("etape-enregistrement"),
@@ -125,7 +132,7 @@
       etat.textContent = config.textes.envoiEchoue + " ";
       const bouton = document.createElement("button");
       bouton.type = "button";
-      bouton.className = "bouton bouton--fantome";
+      bouton.className = "porte porte--fantome";
       bouton.textContent = config.textes.reessayer;
       bouton.addEventListener("click", envoyerLAudio, { once: true });
       etat.appendChild(bouton);

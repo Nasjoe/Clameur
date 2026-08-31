@@ -30,9 +30,11 @@ services:
   web:
     build: .
     restart: unless-stopped
-    # supervisord tient gunicorn et le worker Celery dans le meme conteneur.
-    # / supervisord holds gunicorn and the Celery worker together.
-    command: supervisord -c /app/supervisord.conf
+    # L'entrypoint rafraichit les fichiers statiques dans leur volume avant de
+    # ceder la place a supervisord, qui tient gunicorn, daphne et Celery.
+    # / The entrypoint refreshes the static volume before handing over.
+    entrypoint: ["/app/entrypoint-prod.sh"]
+    command: ["supervisord", "-c", "/app/supervisord.conf"]
     env_file: [.env]
     volumes:
       - medias:/app/medias
