@@ -9,6 +9,9 @@ urlpatterns = [
     # quelqu'un a qui l'on parle du projet, et elle donne acces au reste.
     # / The constellation is the home page.
     path("", views.constellation, name="constellation"),
+    # L'adresse courte de la borne ouverte : celle qu'on dit a voix haute et
+    # qu'on encode dans le QR. / The speakable address of the open borne.
+    path("nouvelle", views.accueil_borne_par_defaut, name="nouvelle"),
     path("b/<slug:slug>", views.accueil_borne, name="accueil_borne"),
     path("b/<slug:slug>/capsule", views.creer_capsule, name="creer_capsule"),
     path("b/<slug:slug>/affiche", views.affiche_borne, name="affiche_borne"),

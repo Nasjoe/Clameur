@@ -66,3 +66,16 @@ def test_le_type_mime_des_polices_est_connu():
 
     type_devine, _encodage = mimetypes.guess_type("police.woff2")
     assert type_devine == "font/woff2", f"woff2 servi en {type_devine}"
+
+
+@pytest.mark.django_db
+def test_la_migration_pose_une_borne_sur_une_base_neuve():
+    """Sans borne, la page d'accueil n'affiche aucun bouton d'enregistrement et
+    personne ne peut déposer la première clameur : le site reste vide
+    définitivement, sans que rien ne l'explique.
+
+    La migration `bornes.0002` en crée une si la table est vide. Elle a tourné
+    au montage de cette base de test.
+    / No borne means no button, and nobody can post the first clameur.
+    """
+    assert Borne.objects.exists(), "une base neuve doit porter une borne"

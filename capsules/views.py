@@ -46,6 +46,11 @@ DUREE_MEMOIRE_DES_ECOUTES = 86400
 # / The invitation QR only changes with the borne.
 DUREE_DU_CACHE_INVITATION = 600
 
+# L'echelle ne fixe que la finesse du trace : le viewBox fait le reste, et
+# le CSS decide de la taille affichee.
+# / Scale only sets the drawing's precision; the viewBox handles sizing.
+ECHELLE_DU_QR = 8
+
 # Une couleur par LOCUTEUR, pas par segment. Colorer au fil des segments
 # donnerait deux teintes differentes a la meme personne qui parle deux fois :
 # la transcription deviendrait illisible au lieu d'aider.
@@ -96,8 +101,26 @@ def interroger_l_imprimante(borne) -> dict:
 
 
 @require_GET
+def accueil_borne_par_defaut(request):
+    """`/nouvelle` — la borne ouverte du moment, sans avoir a nommer laquelle.
+
+    C'est l'adresse qu'on donne de vive voix et qu'on encode dans le QR : elle
+    tient dans une phrase. `/b/<slug>` reste disponible pour designer une borne
+    precise quand il y en a plusieurs.
+    / A speakable address for the borne of the day; /b/<slug> still targets one.
+    """
+    borne = Borne.objects.filter(active=True).order_by("nom").first()
+    if borne is None:
+        raise Http404("aucune borne ouverte")
+    return _rendre_la_borne(request, borne)
+
+
+@require_GET
 def accueil_borne(request, slug):
-    borne = get_object_or_404(Borne, slug=slug)
+    return _rendre_la_borne(request, get_object_or_404(Borne, slug=slug))
+
+
+def _rendre_la_borne(request, borne):
     return render(
         request,
         "capsules/borne.html",
@@ -374,13 +397,14 @@ def invitation_a_enregistrer(request) -> dict | None:
     except Exception:
         logger.warning("cache indisponible pour l'invitation")
 
-    url = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:accueil_borne', args=[borne.slug])}"
+    url = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:nouvelle')}"
     invitation = {
         "borne": borne.nom,
         "url": url,
+        "chemin": reverse("capsules:nouvelle"),
         # Correction moyenne : ce QR est lu sur un ecran, pas sur une affiche
         # exposee aux intemperies. / Medium correction: read from a screen.
-        "qr_svg": segno.make(url, error="m").svg_inline(scale=8, border=0, dark="#0b0d14"),
+        "qr_svg": _qr_avec_viewbox(url),
     }
     try:
         cache.set(cle, invitation, DUREE_DU_CACHE_INVITATION)
@@ -420,6 +444,24 @@ def _duree_lisible(secondes: int) -> str:
 #   read as mistakes, not as neighbours. The arc keeps variety inside the family.
 TEINTE_DEPART = 350
 ETENDUE_DES_TEINTES = 110
+
+
+def _qr_avec_viewbox(url: str) -> str:
+    """Le QR, muni d'un `viewBox` pour qu'il se mette a l'echelle.
+
+    Segno rend un `<svg>` avec des `width`/`height` fixes et AUCUN `viewBox`.
+    Un `width: 100%` en CSS etire alors le canevas sans redimensionner le
+    dessin : le code se retrouve tasse dans un coin, decentre. Le viewBox lui
+    rend son ratio, et le centrage devient l'affaire du CSS.
+    / Segno emits no viewBox: CSS width stretches the canvas but not the
+      drawing, leaving the code stuck in a corner.
+    """
+    qr = segno.make(url, error="m")
+    cote = qr.symbol_size(scale=ECHELLE_DU_QR, border=0)[0]
+    svg = qr.svg_inline(scale=ECHELLE_DU_QR, border=0, dark="#0b0d14")
+    return svg.replace(
+        "<svg ", f'<svg viewBox="0 0 {cote} {cote}" ', 1
+    )
 
 
 def _teinte_de_la_position(x: float, y: float) -> int:

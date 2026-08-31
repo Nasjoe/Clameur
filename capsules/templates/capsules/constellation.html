@@ -177,9 +177,16 @@
   .invitation h2 { font-size: var(--text-2xl); margin: 0 0 var(--space-2xs); }
   .invitation-qr {
     background: var(--color-ink); border-radius: var(--radius-md);
-    padding: var(--space-md); margin: var(--space-lg) 0 var(--space-sm); line-height: 0;
+    padding: var(--space-md); margin: var(--space-lg) 0 var(--space-sm);
+    line-height: 0;
   }
-  .invitation-qr svg { width: 100%; height: auto; display: block; }
+  /* `block` + marges automatiques : sans elles le SVG reste un element en
+     ligne, cale sur la ligne de base et decale vers la gauche.
+     / Inline SVGs sit on the text baseline and drift left. */
+  .invitation-qr svg {
+    display: block; margin: 0 auto;
+    width: 100%; max-width: 15rem; height: auto;
+  }
   .invitation-url {
     font-family: var(--font-mono); font-size: var(--text-xs);
     color: var(--color-ink-tenu); word-break: break-all; margin: 0 0 var(--space-lg);
@@ -231,6 +238,19 @@
         </p>
         <div class="invitation-qr">{{ invitation.qr_svg|safe }}</div>
         <p class="invitation-url">{{ invitation.url }}</p>
+
+        {% comment %}
+          Le QR sert au visiteur qui vient AVEC son téléphone. Celui qui lit la
+          page DEPUIS son téléphone n'a rien à scanner : il lui faut un lien.
+          / The QR serves whoever arrives with a phone; whoever reads this ON a
+            phone needs a link instead.
+        {% endcomment %}
+        <p style="margin: 0 0 var(--space-sm)">
+          <a class="porte porte--pleine porte--large" href="{{ invitation.chemin }}">
+            {% translate "Enregistrer avec cet appareil" %}
+          </a>
+        </p>
+
         <button type="button" class="porte porte--fantome porte--large" id="fermer-invitation">
           {% translate "Fermer" %}
         </button>
