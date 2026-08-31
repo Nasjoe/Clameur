@@ -76,13 +76,18 @@ octets ESC/POS** que la vraie imprimante :
 docker compose logs -f celery | grep -A 20 "Ticket (mock)"
 ```
 
+**`make` sans argument affiche l'aide** — les quatorze commandes disponibles,
+les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
+
 | Commande | |
 |---|---|
+| `make fixture` | corpus de démonstration, puis serveur |
 | `make run` | serveur + worker, en `DEBUG` |
-| `make test` | les 76 tests |
-| `make fixture` | corpus de démonstration puis serveur |
+| `make test` | les 97 tests |
+| `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
+| `make verifier` | contrôle la configuration de déploiement |
 | `make console` | crée un compte opérateur |
 | `make rebuild` | après ajout d'une dépendance |
 

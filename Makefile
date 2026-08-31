@@ -19,63 +19,88 @@ DANS_WEB = $(COMPOSE) run --rm web python manage.py
 # / Without --user the container writes as root onto the host's disk.
 COMME_MOI = $(COMPOSE) run --rm --user "$$(id -u):$$(id -g)" -e HOME=/tmp -e UV_CACHE_DIR=/tmp/cache-uv
 
-services:
+# Un `make` nu doit renseigner, pas agir : la premiere cible d'un Makefile est
+# celle qui part toute seule, et ce serait la pire des surprises.
+# / A bare `make` should inform, not act.
+.DEFAULT_GOAL := aide
+
+BLEU  = \033[36m
+GRAS  = \033[1m
+BRUN  = \033[33m
+FIN   = \033[0m
+
+aide:  ## Affiche cette aide
+	@printf "\n  $(GRAS)Clameur$(FIN) — capsules sonores, tickets QR, constellation\n"
+	@printf "  Docker est le seul prérequis.\n\n"
+	@printf "  $(BRUN)Au quotidien$(FIN)\n"
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-z_-]+:.*?## / {printf "    $(BLEU)%-14s$(FIN) %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@printf "\n  $(BRUN)Premiers pas$(FIN)\n"
+	@printf "    cp .env.example .env  puis  make fixture\n"
+	@printf "    Constellation  http://localhost:8000/\n"
+	@printf "    Borne          http://localhost:8000/b/place-du-marche\n"
+	@printf "    Console        http://localhost:8000/admin/\n\n"
+	@printf "  $(BRUN)Bon à savoir$(FIN)\n"
+	@printf "    Sans clé Mistral, les capsules restent publiées et écoutables,\n"
+	@printf "    simplement sans transcription. Sans identifiants Sunmi, le ticket\n"
+	@printf "    s'écrit dans les journaux — avec les mêmes octets ESC/POS :\n"
+	@printf "    $(BLEU)docker compose logs -f celery | grep -A 20 'Ticket (mock)'$(FIN)\n\n"
+	@printf "  La mise en production est décrite dans docs/PASSATION-PRODUCTION.md\n\n"
+
+services:  ## Démarre PostgreSQL et Redis seuls
 	$(COMPOSE) up -d db redis
 
-migrate: services
+migrate: services  ## Applique les migrations
 	$(DANS_WEB) migrate
 
-# Cent clameurs ecoutables, taguees, illustrees et groupees par theme,
-# puis le serveur en mode DEBUG.
-# / A hundred audible, tagged, illustrated, theme-clustered clameurs.
-fixture: migrate
+migrations:  ## Génère les migrations (écrit sur ton disque, d'où --user)
+	$(COMME_MOI) web python manage.py makemigrations
+
+fixture: migrate  ## Crée 100 clameurs de démonstration, puis lance le serveur
 	$(DANS_WEB) creer_des_clameurs --nombre 100 --vider
 	$(DANS_WEB) projeter_la_constellation
-	@echo ""
-	@echo "  Constellation : http://localhost:8000/"
-	@echo "  Borne         : http://localhost:8000/b/place-du-marche"
-	@echo "  Affiche       : http://localhost:8000/b/place-du-marche/affiche  (staff)"
-	@echo "  Console       : http://localhost:8000/admin/"
-	@echo ""
+	@printf "\n  Constellation : http://localhost:8000/\n"
+	@printf "  Borne         : http://localhost:8000/b/place-du-marche\n"
+	@printf "  Affiche       : http://localhost:8000/b/place-du-marche/affiche  (staff)\n"
+	@printf "  Console       : http://localhost:8000/admin/\n\n"
 	$(MAKE) run
+
+run: services  ## Lance le serveur et le worker, en mode DEBUG
+	DEBUG=true $(COMPOSE) up web celery
+
+test: services  ## Lance toute la suite de tests
+	$(COMPOSE) run --rm web pytest -q
+
+lint:  ## Vérifie le style du code
+	$(COMPOSE) run --rm web ruff check .
 
 # A relancer apres chaque vague d'enrichissement : une projection est globale,
 # une nouvelle clameur deplace toutes les autres.
 # / Rerun after each enrichment wave: a projection is global.
-constellation:
+constellation:  ## Recalcule la position des étoiles du ciel
 	$(DANS_WEB) projeter_la_constellation
 
-run: services
-	DEBUG=true $(COMPOSE) up web celery
+console:  ## Crée un compte opérateur pour /admin/
+	$(DANS_WEB) createsuperuser
 
-test: services
-	$(COMPOSE) run --rm web pytest -q
+imprimante:  ## Imprime un ticket de test sur la vraie Sunmi
+	$(DANS_WEB) tester_l_imprimante place-du-marche
 
-# Apres l'ajout d'une dependance. `uv lock` D'ABORD, car le Dockerfile fait
-# `uv sync --frozen` et installerait sinon l'ancien jeu, en silence. Et un
-# `build` seul ne suffit pas : les conteneurs deja lances continuent de
-# tourner sur l'ancienne image.
-# / uv lock first (--frozen ignores pyproject), then recreate: build alone is
-#   not enough.
-# `build` SANS ARGUMENT : chaque service qui declare `build: .` a sa propre
-# image. N'en reconstruire qu'une laissait l'autre sur une version anterieure,
-# avec un PATH different — et un worker Celery qui ne trouvait plus son binaire.
-# / Each service with `build: .` has its own image; building only one left the
-#   other behind, with a stale PATH.
-rebuild:
+purge:  ## Supprime les enregistrements jamais publiés (annonce seulement)
+	$(DANS_WEB) purger_les_brouillons
+
+# `uv lock` D'ABORD, car le Dockerfile fait `uv sync --frozen` et installerait
+# sinon l'ancien jeu, en silence. `build` SANS ARGUMENT : chaque service qui
+# declare `build: .` a sa propre image, et n'en reconstruire qu'une laissait
+# l'autre sur un PATH perime. Enfin, un `build` seul ne suffit pas : les
+# conteneurs deja lances continuent de tourner sur l'ancienne image.
+# / Lock first, build every image, then recreate: each step is load-bearing.
+rebuild:  ## Après ajout d'une dépendance : relock, reconstruit, recrée
 	$(COMME_MOI) --entrypoint uv web lock
 	$(COMPOSE) build
 	$(COMPOSE) up -d --force-recreate web celery
 
-console:
-	$(DANS_WEB) createsuperuser
+verifier: ## Contrôle la configuration de déploiement (éditeur, contact, https)
+	$(COMPOSE) run --rm -e DEBUG=false web python manage.py check --deploy
 
-imprimante:
-	$(DANS_WEB) tester_l_imprimante place-du-marche
-
-# Les migrations sont ecrites sur le disque de l'hote : identite obligatoire.
-# / Migrations land on the host's disk: identity required.
-migrations:
-	$(COMME_MOI) web python manage.py makemigrations
-
-.PHONY: services migrate fixture constellation run test rebuild console imprimante migrations
+.PHONY: aide services migrate migrations fixture run test lint constellation \
+        console imprimante purge rebuild verifier
