@@ -7,8 +7,10 @@ import os
 
 from celery import shared_task
 from django.conf import settings
+from django.db import transaction
 from django.utils import timezone
 
+from capsules.diffusion import diffuser_la_transcription
 from capsules.models import Capsule, Tag, TagDeCapsule
 from capsules.transcription import transcrire_le_fichier
 
@@ -39,6 +41,12 @@ def transcrire(uuid_capsule: str) -> str:
     capsule.langue_detectee = resultat["langue"]
     capsule.erreur_enrichissement = ""
     capsule.save()
+
+    # DIFFERE AU COMMIT : diffuser avant que la transaction soit ecrite
+    # enverrait un texte que la base ne contient pas encore. En cas de
+    # rollback, la page afficherait une transcription qui n'existe pas.
+    # / Deferred to commit: broadcasting earlier could push uncommitted text.
+    transaction.on_commit(lambda: diffuser_la_transcription(capsule))
 
     taguer.delay(uuid_capsule)
     return "ok"

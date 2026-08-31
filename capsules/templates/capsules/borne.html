@@ -3,6 +3,34 @@
 
 {% block titre %}{{ borne.nom }} — {% translate "Clameur" %}{% endblock %}
 
+{% block styles %}
+<style>
+  .chrono {
+    font-family: var(--font-display); font-weight: 800;
+    font-size: clamp(3.5rem, 16vw, 5.5rem); line-height: 1;
+    letter-spacing: var(--tracking-display);
+    font-variant-numeric: tabular-nums;
+    color: var(--color-ambre);
+    margin: var(--space-md) 0 var(--space-xs);
+  }
+  .etape { margin-top: var(--space-2xl); display: grid; gap: var(--space-md); }
+  .etape label { font-size: var(--text-md); }
+  .puits-lecteur {
+    background: var(--color-paper-3); border-radius: var(--radius-md);
+    padding: var(--space-2xs) var(--space-xs); margin: var(--space-sm) 0;
+  }
+  .puits-lecteur audio { width: 100%; height: 34px; display: block; color-scheme: dark; }
+  .duo-champs { display: flex; gap: var(--space-xs); flex-wrap: wrap; }
+  /* min-width: 0 : sans lui, un champ flex refuse de descendre sous sa
+     largeur par defaut et pousse hors de l'ecran.
+     / Without min-width:0 a flex input will not shrink past its default. */
+  .duo-champs .champ { min-width: 0; flex: 1 1 8rem; }
+  /* Un champ de fichier natif ne se stylise pas au-dela de son contenant.
+     / A native file input cannot be styled past its wrapper. */
+  input[type="file"].champ { padding: var(--space-xs) var(--space-sm); font-size: var(--text-md); }
+</style>
+{% endblock %}
+
 {% block contenu %}
 <h1>{% translate "Dépose une clameur" %}</h1>
 <p class="doux">{{ borne.texte_accueil|default:_("Enregistre une idée, un souvenir. Repars avec un ticket.") }}</p>
@@ -19,8 +47,8 @@
   <p class="carte avis">{% translate "Cette borne est fermée pour le moment." %}</p>
 {% else %}
 
-<section id="etape-accueil" style="margin-top:2rem">
-  <button class="bouton" id="bouton-demarrer" type="button">
+<section id="etape-accueil" class="etape">
+  <button class="porte porte--pleine porte--large porte--grande" id="bouton-demarrer" type="button">
     {% translate "Commencer à parler" %}
   </button>
   <p class="doux" style="font-size:.85rem;margin-top:.75rem">
@@ -28,22 +56,22 @@
   </p>
 </section>
 
-<section id="etape-enregistrement" hidden style="margin-top:2rem">
-  <p style="font-size:3rem;font-variant-numeric:tabular-nums;margin:.5rem 0" id="chrono" aria-live="off">0:00</p>
+<section id="etape-enregistrement" class="etape" hidden>
+  <p class="chrono" id="chrono" aria-live="off">0:00</p>
   <p class="doux" id="etat-enregistrement" role="status">{% translate "J'écoute." %}</p>
-  <button class="bouton" id="bouton-arreter" type="button">{% translate "J'ai fini" %}</button>
+  <button class="porte porte--rose porte--large porte--grande" id="bouton-arreter" type="button">{% translate "J'ai fini" %}</button>
 </section>
 
-<section id="etape-formulaire" hidden style="margin-top:2rem">
+<section id="etape-formulaire" class="etape" hidden>
   <p class="doux">{% translate "Réécoute-toi avant de publier." %}</p>
-  <audio id="reecoute" controls style="width:100%;margin:.75rem 0"></audio>
+  <div class="puits-lecteur"><audio id="reecoute" controls></audio></div>
 
-  <form id="formulaire-publication" style="display:grid;gap:.75rem">
+  <form id="formulaire-publication" style="display:grid;gap:var(--space-sm)">
     <label for="pseudo" class="doux">{% translate "Un pseudo, si tu veux" %}</label>
     <input class="champ" type="text" id="pseudo" name="pseudo" maxlength="80" autocomplete="off">
 
     <label for="tag1" class="doux">{% blocktranslate %}Jusqu'à {{ nombre_max_de_tags }} mots-clés{% endblocktranslate %}</label>
-    <div style="display:flex;gap:.5rem">
+    <div class="duo-champs">
       <input class="champ" type="text" id="tag1" name="tags" maxlength="60" autocomplete="off">
       <input class="champ" type="text" id="tag2" name="tags" maxlength="60" autocomplete="off">
     </div>
@@ -51,18 +79,18 @@
     <label for="photo" class="doux">{% translate "Une photo, si tu veux" %}</label>
     <input class="champ" type="file" id="photo" name="photo" accept="image/*" capture="environment">
 
-    <button class="bouton" type="submit" id="bouton-publier">{% translate "Publier et imprimer" %}</button>
-    <button class="bouton bouton--fantome" type="button" id="bouton-recommencer">
+    <button class="porte porte--pleine porte--large" type="submit" id="bouton-publier">{% translate "Publier et imprimer" %}</button>
+    <button class="porte porte--fantome porte--large" type="button" id="bouton-recommencer">
       {% translate "Recommencer" %}
     </button>
   </form>
   <p class="doux" id="etat-envoi" role="status" style="margin-top:.5rem"></p>
 </section>
 
-<section id="etape-fin" hidden style="margin-top:2rem">
+<section id="etape-fin" class="etape" hidden>
   <h1>{% translate "Ton ticket sort." %}</h1>
   <p class="doux">{% translate "Prends-le, et colle-le où tu veux." %}</p>
-  <p><a class="bouton bouton--fantome" id="lien-capsule" href="#">{% translate "Écouter ma clameur" %}</a></p>
+  <p><a class="porte porte--ambre porte--large" id="lien-capsule" href="#">{% translate "Écouter ma clameur" %}</a></p>
   <p><a class="doux" href="{% url 'capsules:accueil_borne' borne.slug %}">{% translate "Déposer une autre clameur" %}</a></p>
 </section>
 

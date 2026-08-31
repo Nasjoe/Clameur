@@ -1,0 +1,261 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block titre %}{% translate "La constellation" %}{% endblock %}
+
+{% block styles %}
+<style>
+  main { max-width: none; padding: 0; height: 100dvh; }
+
+  .double-ecran {
+    display: grid; grid-template-columns: minmax(340px, 33rem) 1fr;
+    height: 100dvh; overflow: hidden;
+  }
+
+  .panneau-liste {
+    border-right: 1px solid var(--color-trait);
+    display: flex; flex-direction: column; min-height: 0;
+  }
+
+  .entete {
+    padding: var(--space-xl) var(--space-lg) var(--space-md);
+    border-bottom: 1px solid var(--color-trait);
+  }
+  .entete h1 { font-size: var(--text-2xl); margin: 0 0 var(--space-2xs); }
+
+  /* Pas de scroll-behavior: smooth : il transforme jusqu'aux assignations
+     directes de scrollTop en animation et empeche la notre d'avancer.
+     / No CSS smooth scrolling: it would fight our own animation. */
+  .liste {
+    overflow-y: auto; flex: 1; padding: var(--space-sm);
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-glissiere) transparent;
+  }
+  .liste::-webkit-scrollbar { width: 10px; }
+  .liste::-webkit-scrollbar-track { background: transparent; }
+  .liste::-webkit-scrollbar-thumb {
+    background: var(--color-glissiere); border-radius: var(--radius-pilule);
+    border: 3px solid transparent; background-clip: content-box;
+  }
+  .liste::-webkit-scrollbar-thumb:hover {
+    background: var(--color-glissiere-survol); background-clip: content-box;
+  }
+
+  /* --- La fiche --------------------------------------------------------
+     Sobre au repos. LA PORTE EST RESERVEE A LA SELECTION : donner l'ombre
+     dure aux cent fiches d'un coup la banaliserait, alors qu'ici elle dit
+     exactement une chose — c'est celle-la qu'on ecoute.
+     / The hard shadow is reserved for the selected card: giving it to all
+       hundred would flatten the signal it carries. --- */
+  .clameur {
+    display: block; padding: var(--space-sm) var(--space-sm) var(--space-md);
+    border: var(--rule-porte) solid transparent;
+    border-radius: var(--radius-lg);
+    margin: 0 var(--porte-decalage) var(--space-2xs) 0;
+    transition: background var(--dur-court) var(--ease-out);
+  }
+  .clameur:hover { background: var(--color-paper-2); }
+  .clameur[aria-current="true"] {
+    background: var(--astre-sourd);
+    border-color: var(--astre);
+    box-shadow: var(--porte-decalage) var(--porte-decalage) 0 0 var(--astre);
+  }
+
+  .clameur-tete {
+    /* minmax(0, 1fr) et non 1fr : une piste `1fr` ne descend jamais sous la
+       largeur intrinseque de son contenu, et un pseudo sans espace ferait
+       deborder la fiche sur un telephone.
+       / A bare 1fr cannot shrink below its content; a long word overflows. */
+    display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--space-sm);
+    align-items: start; width: 100%; text-align: left;
+    padding: var(--space-2xs) 0 var(--space-xs); border: 0;
+    background: transparent; color: var(--color-ink); font: inherit; cursor: pointer;
+  }
+  .pastille-liste {
+    width: 13px; height: 13px; border-radius: 50%; margin-top: .38rem;
+    background: var(--astre); flex: none;
+  }
+  .clameur-nom {
+    font-family: var(--font-display); font-weight: 800;
+    letter-spacing: -0.02em; font-size: var(--text-xl);
+    overflow-wrap: anywhere;
+  }
+  .clameur-meta { font-size: var(--text-sm); color: var(--color-ink-doux); }
+
+  /* Le lecteur natif ne se teinte pas — aucune propriete standard ne le
+     permet. On ne le remplace pas pour autant : il apporte gratuitement le
+     clavier, le lecteur d'ecran et la vitesse de lecture. On le pose donc
+     dans un contenant chaud et on le laisse s'effacer tant qu'on ne s'en
+     sert pas. / The native player cannot be tinted; rather than rebuild it
+     and lose its accessibility, we seat it in a warm well and let it recede. */
+  .puits-lecteur {
+    background: var(--color-paper-3); border-radius: var(--radius-md);
+    padding: var(--space-2xs) var(--space-xs);
+    margin: var(--space-2xs) 0 var(--space-sm);
+    opacity: .62; transition: opacity var(--dur-court) var(--ease-out);
+  }
+  .clameur:hover .puits-lecteur,
+  .clameur[aria-current="true"] .puits-lecteur,
+  .puits-lecteur:focus-within { opacity: 1; }
+
+  .lecteur-de-fiche { width: 100%; height: 32px; display: block; color-scheme: dark; }
+
+  /* --- Le texte -------------------------------------------------------- */
+  .transcription { font-size: var(--text-md); }
+  .depliant summary {
+    cursor: pointer; list-style: none; color: var(--color-ink-doux);
+    display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-xs);
+    align-items: start; border-radius: var(--radius-sm);
+  }
+  .depliant summary::-webkit-details-marker { display: none; }
+  .depliant summary:hover { color: var(--color-ink); }
+  .depliant-signal {
+    width: 0; height: 0; margin-top: .5rem;
+    border-left: 5px solid transparent; border-right: 5px solid transparent;
+    border-top: 6px solid var(--color-ink-tenu);
+    transition: transform var(--dur-court) var(--ease-out);
+  }
+  .depliant[open] .depliant-signal { transform: rotate(180deg); }
+  .depliant[open] .apercu { display: none; }
+
+  .paroles { margin-top: var(--space-sm); }
+  .parole {
+    margin: 0 0 var(--space-sm); padding-left: var(--space-sm);
+    border-left: 2px solid var(--voix);
+  }
+  .locuteur {
+    font-size: var(--text-xs); font-weight: 600;
+    text-transform: uppercase; letter-spacing: var(--tracking-label); color: var(--voix);
+  }
+
+  .attente {
+    color: var(--color-ink-tenu); margin: 0;
+    display: flex; align-items: center; gap: var(--space-xs);
+    font-size: var(--text-md);
+  }
+  .pouls {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--color-ambre);
+    animation: pouls 1.6s var(--ease-in-out) infinite; flex: none;
+  }
+  @keyframes pouls { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+
+  /* --- Le ciel --------------------------------------------------------- */
+  .panneau-ciel { position: relative; min-height: 0; }
+  #ciel { width: 100%; height: 100%; display: block; touch-action: manipulation; }
+  #ciel circle {
+    cursor: pointer;
+    transition: opacity var(--dur-court) var(--ease-out), r var(--dur-court) var(--ease-out);
+  }
+  #ciel circle:hover { opacity: 1 !important; }
+  #ciel circle.choisie { stroke: var(--color-ink); stroke-width: 3; }
+
+  .legende {
+    position: absolute; left: var(--space-lg); bottom: var(--space-lg);
+    font-size: var(--text-sm); color: var(--color-ink-tenu); pointer-events: none;
+  }
+
+  .inviter {
+    position: absolute; top: var(--space-lg); right: var(--space-lg);
+    z-index: 2; width: auto;
+  }
+
+  /* --- L'invitation ---------------------------------------------------- */
+  .invitation {
+    border: var(--rule-porte) solid var(--color-braise);
+    border-radius: var(--radius-lg);
+    background: var(--color-paper-2); color: var(--color-ink);
+    padding: var(--space-xl); text-align: center;
+    /* Borne au viewport : 23rem valent 368 px, soit plus que l'ecran d'un
+       petit telephone. / 23rem is wider than a small phone. */
+    max-width: min(23rem, calc(100vw - 2 * var(--space-lg)));
+    box-shadow: var(--porte-decalage) var(--porte-decalage) 0 0 var(--color-braise);
+  }
+  .invitation::backdrop {
+    background: var(--color-voile);
+    backdrop-filter: blur(2px);
+  }
+  .invitation h2 { font-size: var(--text-2xl); margin: 0 0 var(--space-2xs); }
+  .invitation-qr {
+    background: var(--color-ink); border-radius: var(--radius-md);
+    padding: var(--space-md); margin: var(--space-lg) 0 var(--space-sm); line-height: 0;
+  }
+  .invitation-qr svg { width: 100%; height: auto; display: block; }
+  .invitation-url {
+    font-family: var(--font-mono); font-size: var(--text-xs);
+    color: var(--color-ink-tenu); word-break: break-all; margin: 0 0 var(--space-lg);
+  }
+
+  .pied {
+    padding: var(--space-md) var(--space-lg);
+    border-top: 1px solid var(--color-trait); margin: 0;
+  }
+
+  @media (max-width: 800px) {
+    .double-ecran { grid-template-columns: 1fr; grid-template-rows: 38dvh 1fr; }
+    .panneau-liste { border-right: 0; border-top: 1px solid var(--color-trait); order: 2; }
+    .panneau-ciel { order: 1; }
+    .inviter { top: var(--space-sm); right: var(--space-sm); font-size: var(--text-md); }
+  }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<div class="double-ecran">
+  <section class="panneau-liste" aria-label="{% translate 'Liste des clameurs' %}">
+    <div class="entete">
+      <h1>{% translate "La constellation" %}</h1>
+      <p class="doux" style="margin:0;font-size:.85rem">
+        {% blocktranslate %}{{ nombre }} clameurs. Les voisines se ressemblent.{% endblocktranslate %}
+      </p>
+    </div>
+
+    <div class="liste" id="liste" hx-ext="ws" ws-connect="/ws/constellation">
+      {% for clameur in clameurs %}{% include "capsules/_fiche.html" %}{% endfor %}
+    </div>
+
+    <footer class="pied doux">
+      <a href="{% url 'capsules:mentions_legales' %}">{% translate "Mentions légales" %}</a>
+    </footer>
+  </section>
+
+  <section class="panneau-ciel" aria-label="{% translate 'Ciel des clameurs' %}">
+    {% if invitation %}
+      <button type="button" class="porte porte--pleine inviter" id="bouton-inviter">
+        {% translate "Enregistrer une nouvelle clameur" %}
+      </button>
+
+      <dialog class="invitation" id="dialogue-invitation">
+        <h2>{% translate "Dépose ta clameur" %}</h2>
+        <p class="doux">
+          {% translate "Scanne avec ton téléphone : c'est lui qui enregistre." %}
+        </p>
+        <div class="invitation-qr">{{ invitation.qr_svg|safe }}</div>
+        <p class="invitation-url">{{ invitation.url }}</p>
+        <button type="button" class="porte porte--fantome porte--large" id="fermer-invitation">
+          {% translate "Fermer" %}
+        </button>
+      </dialog>
+    {% endif %}
+
+    <!-- Le cadrage demarre a -90 pour reserver une bande vide en haut : sans
+         elle, le bouton d'enregistrement recouvre les etoiles de cette zone,
+         et une clameur devient litteralement inaccessible.
+         / The viewBox starts above the content so the button hides no star. -->
+    <svg id="ciel" viewBox="0 -90 1000 1090" preserveAspectRatio="xMidYMid meet"
+         role="group" aria-label="{% translate 'Chaque point est une clameur' %}"></svg>
+    <p class="legende">{% translate "Clique une étoile." %}</p>
+  </section>
+</div>
+{% endblock %}
+
+{% block pied %}{% endblock %}
+
+{% block scripts %}
+<script>
+  window.URL_ECOUTE = "{% url 'capsules:compter_une_ecoute' '00000000-0000-0000-0000-000000000000' %}";
+  window.JETON_CSRF = "{{ csrf_token }}";
+</script>
+<script src="{% static 'capsules/vendor/htmx-2.0.6.min.js' %}"></script>
+<script src="{% static 'capsules/vendor/htmx-ext-ws.js' %}"></script>
+<script src="{% static 'capsules/constellation.js' %}" defer></script>
+{% endblock %}

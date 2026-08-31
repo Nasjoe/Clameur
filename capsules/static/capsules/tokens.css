@@ -1,0 +1,106 @@
+/* Hallmark · macrostructure: preservee par page · tone: chaleureux, vivant, doux
+ * theme: studied-DNA (source: https://qbubu.net/) · studied: yes · DNA-source: url
+ * observed-fonts: Bricolage Grotesque 800 + Plus Jakarta Sans
+ * observed-paper: oklch(0.19 0.022 45)  ·  observed-ink: oklch(0.94 0.016 70)
+ * observed-accents: oklch(0.73 0.15 38) / oklch(0.83 0.13 78) / oklch(0.76 0.13 12)
+ * signature: ombre dure decalee 5px, la carte s'enfonce dedans au survol
+ * pre-emit critique: P5 H5 E5 S5 R5 V4
+ */
+
+:root {
+  /* --- Papier et encre -----------------------------------------------
+     Un brun de cafe, pas un noir bleute : le chroma est presque nul mais
+     la teinte reste chaude. C'est ce qui separe une page accueillante
+     d'un tableau de bord.
+     / A coffee brown, not a blue-black: warmth survives at near-zero chroma. */
+  --color-paper:      oklch(0.19 0.022 45);
+  --color-paper-2:    oklch(0.235 0.026 45);   /* cartes, panneaux */
+  --color-paper-3:    oklch(0.28 0.03 45);     /* survol, champs */
+  --color-ink:        oklch(0.94 0.016 70);
+  --color-ink-doux:   oklch(0.74 0.022 70);
+  /* 0.66 et non 0.58 : mesure faite, l'encre tenue tombait a 3.44:1 sur le
+     puits du lecteur, sous le seuil WCAG de 4.5. 0.66 est la valeur la plus
+     basse qui passe sur les trois fonds, donc celle qui garde le plus de
+     hierarchie avec l'encre douce.
+     / Measured: 0.58 failed at 3.44:1 on the player well. 0.66 is the lowest
+       value that clears 4.5:1 on all three surfaces. */
+  --color-ink-tenu:   oklch(0.66 0.02 70);
+  --color-trait:      oklch(0.94 0.016 70 / 0.16);
+  --color-glissiere:  oklch(0.74 0.05 45 / 0.28);   /* barre de defilement */
+  --color-glissiere-survol: oklch(0.78 0.08 45 / 0.5);
+  --color-voile:      oklch(0.12 0.02 45 / 0.78);   /* fond de dialogue */
+
+  /* --- Les trois accents ---------------------------------------------
+     Trois suffisent. Une quatrieme couleur d'accent, et la page devient
+     une palette de nuancier. / Three is enough; a fourth reads as a swatch card. */
+  --color-braise:     oklch(0.73 0.15 38);     /* terracotta — action principale */
+  --color-braise-sourd: oklch(0.31 0.06 38);
+  --color-braise-ombre: oklch(0.44 0.13 38);
+  --color-ambre:      oklch(0.83 0.13 78);
+  --color-ambre-sourd: oklch(0.33 0.055 78);
+  --color-ambre-ombre: oklch(0.50 0.12 78);
+  --color-rose:       oklch(0.76 0.13 12);
+  --color-rose-sourd: oklch(0.32 0.055 12);
+  --color-rose-ombre: oklch(0.46 0.12 12);
+
+  --color-accent:     var(--color-braise);
+  --color-focus:      var(--color-ambre);
+
+  /* Encre posee SUR un accent plein : le brun profond, jamais du blanc.
+     / Ink on a filled accent: deep brown, never white. */
+  --color-sur-accent: oklch(0.19 0.03 45);
+
+  /* --- Typographie ---------------------------------------------------- */
+  --font-display: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+  --font-body:    "Plus Jakarta Sans", ui-sans-serif, system-ui, -apple-system, sans-serif;
+  --font-mono:    ui-monospace, "SFMono-Regular", Menlo, monospace;
+
+  --text-display:   clamp(2.9rem, 7vw, 5.2rem);
+  --text-display-s: clamp(2.1rem, 4.6vw, 3.1rem);
+  --text-2xl: 1.5rem;
+  --text-xl:  1.25rem;
+  --text-lg:  1.0625rem;
+  --text-md:  0.9375rem;
+  --text-sm:  0.8125rem;
+  --text-xs:  0.6875rem;
+
+  /* Le display est serre : c'est ce qui lui donne son assise.
+     / Tight display tracking is what gives it weight. */
+  --tracking-display: -0.03em;
+  --tracking-label:   0.08em;
+
+  /* --- Espace, 4 pt ---------------------------------------------------- */
+  --space-2xs: 0.25rem;
+  --space-xs:  0.5rem;
+  --space-sm:  0.75rem;
+  --space-md:  1rem;
+  --space-lg:  1.5rem;
+  --space-xl:  2rem;
+  --space-2xl: 3rem;
+  --space-3xl: 4.5rem;
+
+  /* --- La porte -------------------------------------------------------
+     LA SIGNATURE REPRISE DE LA REFERENCE. Une ombre DURE et decalee, sans
+     le moindre flou, de la couleur exacte de la bordure. Au survol l'objet
+     se deplace de son propre decalage et l'ombre tombe a zero : il s'enfonce
+     dedans, comme une touche qu'on presse. Un box-shadow floue aurait
+     l'effet inverse — il ferait leviter la carte, ce que fait tout le monde.
+     / A hard offset shadow the object sinks into. A blurred one would float
+       it instead, which is what everyone else does. */
+  --porte-decalage: 5px;
+  --rule-porte: 2px;
+  --radius-sm: 8px;
+  --radius-md: 14px;
+  --radius-lg: 20px;
+  --radius-pilule: 999px;
+
+  /* --- Mouvement -------------------------------------------------------
+     Un seul easing porte toute la page : sortie exponentielle, depart franc,
+     arrivee posee. / One easing carries the page: a quick start, a settled stop. */
+  --ease-out:    cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in:     cubic-bezier(0.7, 0, 0.84, 0);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-court:  0.14s;
+  --dur-moyen:  0.24s;
+  --dur-long:   0.42s;
+}

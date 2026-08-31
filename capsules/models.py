@@ -80,6 +80,14 @@ class Capsule(models.Model):
     transcription_texte = models.TextField(blank=True, verbose_name=_("transcription"))
     langue_detectee = models.CharField(max_length=10, blank=True, verbose_name=_("langue"))
     embedding = VectorField(dimensions=1024, null=True, blank=True, verbose_name=_("vecteur"))
+
+    # Position dans la constellation, en [0, 1]. Calculee par la commande
+    # `projeter_la_constellation` et STOCKEE : une projection se recalcule
+    # globalement, pas capsule par capsule, et les etoiles doivent rester a la
+    # meme place d'une visite a l'autre — sinon on ne peut plus s'y reperer.
+    # / Stored, not computed live: the stars must not move between visits.
+    position_x = models.FloatField(null=True, blank=True, verbose_name=_("position x"))
+    position_y = models.FloatField(null=True, blank=True, verbose_name=_("position y"))
     enrichie_le = models.DateTimeField(null=True, blank=True, verbose_name=_("enrichie le"))
     erreur_enrichissement = models.TextField(blank=True, verbose_name=_("erreur"))
 

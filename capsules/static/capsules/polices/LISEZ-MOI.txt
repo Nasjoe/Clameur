@@ -1,0 +1,20 @@
+Polices vendorisees
+===================
+
+Bricolage Grotesque — Mathieu Triay
+Plus Jakarta Sans   — Tokotype
+
+Toutes deux publiees sous SIL Open Font License 1.1, qui autorise l'usage,
+la modification et la redistribution, y compris commerciale, a condition de
+conserver cette mention et de ne pas vendre les fichiers seuls.
+
+Texte complet de la licence : https://openfontlicense.org
+
+Fichiers recuperes depuis fonts.gstatic.com le 2026-08-31, sous-ensembles
+latin et latin-ext uniquement. Les deux familles sont VARIABLES : un fichier
+par sous-ensemble porte toutes les graisses de 200 a 800.
+
+Pour les mettre a jour : recuperer le CSS de Google Fonts avec un
+User-Agent recent (sans quoi il sert du woff, pas du woff2), en extraire les
+URL woff2 des sous-ensembles latin et latin-ext, et remplacer les fichiers.
+Les plages unicode de polices.css viennent du meme CSS.

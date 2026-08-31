@@ -1,8 +1,9 @@
-{% load i18n %}<!doctype html>
+{% load i18n static %}<!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
   <title>Affiche — {{ borne.nom }}</title>
+  <link rel="stylesheet" href="{% static 'capsules/polices/polices.css' %}">
   <style>
     /* Une affiche s'imprime : on pense d'abord au papier, pas a l'ecran.
        / A poster is printed: paper comes first, screen second. */
@@ -13,22 +14,29 @@
 
     .feuille {
       width: 210mm; min-height: 297mm; margin: 0 auto; padding: 22mm 18mm;
-      background: #fff; color: #0b0d14;
-      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      /* Le papier reste blanc et l'encre noire : une affiche s'imprime.
+         Seule la typographie fait le lien avec l'ecran.
+         / A poster is printed: white paper, black ink, house typography. */
+      background: #fff; color: #14100c;
+      font-family: "Plus Jakarta Sans", ui-sans-serif, system-ui, sans-serif;
       display: flex; flex-direction: column; text-align: center;
     }
 
-    h1 { font-size: 62pt; line-height: .95; letter-spacing: -.03em; margin: 0 0 6mm; }
+    h1 {
+      font-family: "Bricolage Grotesque", ui-sans-serif, system-ui, sans-serif;
+      font-weight: 800; font-style: normal;
+      font-size: 64pt; line-height: .92; letter-spacing: -.03em; margin: 0 0 6mm;
+    }
     .sous-titre { font-size: 15pt; line-height: 1.45; margin: 0 auto 10mm; max-width: 130mm; }
 
     .qr { margin: auto 0; }
     .qr svg { width: 105mm; height: 105mm; display: block; margin: 0 auto; }
 
-    .consigne { font-size: 19pt; font-weight: 650; margin: 10mm 0 4mm; }
+    .consigne { font-size: 19pt; font-weight: 600; margin: 10mm 0 4mm; }
     .details { font-size: 11pt; color: #55555f; line-height: 1.6; }
     .url { font-family: ui-monospace, monospace; font-size: 9pt; color: #7a7a86; }
 
-    .barre { height: 3mm; background: #e8703a; margin: 8mm 0; }
+    .barre { height: 3mm; background: #d4622e; margin: 8mm 0; }
 
     /* Ces reperes aident a caler l'affiche, ils ne s'impriment pas.
        / Screen-only helpers, never printed. */

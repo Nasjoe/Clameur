@@ -1,6 +1,7 @@
 """Vues de la borne et de la lecture. / Borne and playback views."""
 
 import logging
+import math
 
 import segno
 from django.conf import settings
@@ -23,6 +24,31 @@ logger = logging.getLogger(__name__)
 
 DUREE_DU_CACHE_IMPRIMANTE = 30
 NOMBRE_MAX_DE_TAGS = 2
+
+# Au-dela, le ciel devient illisible et la page trop lourde. La
+# constellation n'est pas un moteur de recherche : c'est une vue d'ensemble.
+# / Beyond this the sky is unreadable; it is an overview, not a search engine.
+PLAFOND_CONSTELLATION = 600
+
+# Le QR d'invitation ne change que si la borne change : inutile de le
+# regenerer pour chaque visiteur.
+# / The invitation QR only changes with the borne.
+DUREE_DU_CACHE_INVITATION = 600
+
+# Une couleur par LOCUTEUR, pas par segment. Colorer au fil des segments
+# donnerait deux teintes differentes a la meme personne qui parle deux fois :
+# la transcription deviendrait illisible au lieu d'aider.
+# / One colour per speaker, not per segment.
+COULEURS_DES_VOIX = [
+    "oklch(0.73 0.15 38)",   # terracotta
+    "oklch(0.83 0.13 78)",   # ambre
+    "oklch(0.76 0.13 12)",   # rose
+    "oklch(0.80 0.11 55)",   # abricot
+    "oklch(0.70 0.12 25)",   # brique
+    "oklch(0.86 0.10 95)",   # ble
+    "oklch(0.74 0.14 350)",  # framboise
+    "oklch(0.78 0.10 65)",   # sable dore
+]
 
 
 def interroger_l_imprimante(borne) -> dict:
@@ -153,10 +179,26 @@ def lire_capsule(request, uuid):
         "capsules/capsule.html",
         {
             "capsule": capsule,
-            "segments": (capsule.transcription_raw or {}).get("segments") or [],
+            "segments": _colorer_les_voix(
+                (capsule.transcription_raw or {}).get("segments") or []
+            ),
             "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
         },
     )
+
+
+def _colorer_les_voix(segments):
+    """Attribue une couleur a chaque locuteur, dans son ordre d'apparition.
+    / Assigns a colour to each speaker, in order of first appearance."""
+    couleur_du_locuteur = {}
+    for segment in segments:
+        locuteur = segment.get("speaker") or "voix"
+        if locuteur not in couleur_du_locuteur:
+            couleur_du_locuteur[locuteur] = COULEURS_DES_VOIX[
+                len(couleur_du_locuteur) % len(COULEURS_DES_VOIX)
+            ]
+        segment["couleur"] = couleur_du_locuteur[locuteur]
+    return segments
 
 
 @require_POST
@@ -200,6 +242,108 @@ def affiche_borne(request, slug):
             "qr_svg": qr.svg_inline(scale=12, border=0, dark="#0b0d14"),
         },
     )
+
+
+@require_GET
+def constellation(request):
+    """Les deux ecrans : la liste et le ciel, synchronises.
+
+    LA LISTE EST RENDUE PAR DJANGO, et non construite en JavaScript. C'est ce
+    qui permet a HTMX de remplacer une transcription par swap OOB quand elle
+    arrive : on ne peut pas viser un element que le serveur n'a jamais rendu.
+    / Django renders the list so HTMX can OOB-swap into it later.
+
+    TOUT EST CHARGE D'UN COUP, sans pagination : la synchronisation suppose que
+    n'importe quelle pastille trouve son element dans la liste.
+    / No pagination: any star must find its card.
+    """
+    capsules = (
+        Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+        .exclude(position_x=None)
+        .prefetch_related("tags_de_capsule__tag")
+        .order_by("-publiee_le")[:PLAFOND_CONSTELLATION]
+    )
+    return render(
+        request,
+        "capsules/constellation.html",
+        {
+            "clameurs": [decrire_une_clameur(capsule) for capsule in capsules],
+            "nombre": len(capsules),
+            "invitation": invitation_a_enregistrer(request),
+        },
+    )
+
+
+def invitation_a_enregistrer(request) -> dict | None:
+    """Le QR a scanner pour deposer une clameur, ou None s'il n'y a pas de borne.
+
+    On vise la premiere borne active. Un visiteur sur son ordinateur ne peut
+    pas enregistrer sur place : il lui faut son telephone, donc un QR — c'est
+    le meme chemin d'entree que sur l'affiche.
+    / The QR to record a clameur; None when no borne is open.
+    """
+    borne = Borne.objects.filter(active=True).order_by("nom").first()
+    if not borne:
+        return None
+
+    cle = f"invitation:{borne.slug}"
+    invitation = cache.get(cle)
+    if invitation is not None:
+        return invitation
+
+    url = f"{settings.URL_PUBLIQUE.rstrip('/')}{reverse('capsules:accueil_borne', args=[borne.slug])}"
+    invitation = {
+        "borne": borne.nom,
+        "url": url,
+        # Correction moyenne : ce QR est lu sur un ecran, pas sur une affiche
+        # exposee aux intemperies. / Medium correction: read from a screen.
+        "qr_svg": segno.make(url, error="m").svg_inline(scale=8, border=0, dark="#0b0d14"),
+    }
+    cache.set(cle, invitation, DUREE_DU_CACHE_INVITATION)
+    return invitation
+
+
+def decrire_une_clameur(capsule) -> dict:
+    """Tout ce dont la fiche et l'etoile ont besoin.
+    / Everything the card and the star need."""
+    return {
+        "capsule": capsule,
+        "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
+        "duree": _duree_lisible(capsule.duree_secondes),
+        "audio": capsule.audio_a_servir.url if capsule.audio_a_servir else "",
+        "x": round(capsule.position_x or 0.5, 4),
+        "y": round(capsule.position_y or 0.5, 4),
+        "teinte": _teinte_de_la_position(capsule.position_x or 0.5, capsule.position_y or 0.5),
+        "segments": _colorer_les_voix(
+            (capsule.transcription_raw or {}).get("segments") or []
+        ),
+    }
+
+
+def _duree_lisible(secondes: int) -> str:
+    minutes, reste = divmod(int(secondes or 0), 60)
+    return f"{minutes} min {reste:02d}" if minutes else f"{reste} s"
+
+
+# L'arc des teintes du ciel : du rose au dore, en passant par la terracotta.
+# UNE ROUE COMPLETE SERAIT UNE FAUTE : sur un papier brun chaud, un point vert
+# ou bleu ne se lit pas comme une voisine, il se lit comme une erreur. On garde
+# la variete — trois familles bien distinctes — sans quitter la famille chaude.
+# / A full colour wheel would put green and blue on warm brown paper: they would
+#   read as mistakes, not as neighbours. The arc keeps variety inside the family.
+TEINTE_DEPART = 350
+ETENDUE_DES_TEINTES = 110
+
+
+def _teinte_de_la_position(x: float, y: float) -> int:
+    """La teinte suit l'angle depuis le centre du ciel, dans l'arc chaud.
+
+    Les amas proches recoivent des teintes proches, et deux amas opposes
+    s'opposent aussi en couleur — mais tous restent dans la meme famille.
+    / Nearby clusters get nearby hues, all inside the warm family.
+    """
+    angle = (math.degrees(math.atan2(y - 0.5, x - 0.5)) + 180) % 360
+    return int(TEINTE_DEPART + angle / 360 * ETENDUE_DES_TEINTES) % 360
 
 
 @require_GET

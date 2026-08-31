@@ -5,6 +5,10 @@ from capsules import views
 app_name = "capsules"
 
 urlpatterns = [
+    # La constellation EST la page d'accueil : c'est elle qu'on montre a
+    # quelqu'un a qui l'on parle du projet, et elle donne acces au reste.
+    # / The constellation is the home page.
+    path("", views.constellation, name="constellation"),
     path("b/<slug:slug>", views.accueil_borne, name="accueil_borne"),
     path("b/<slug:slug>/capsule", views.creer_capsule, name="creer_capsule"),
     path("b/<slug:slug>/affiche", views.affiche_borne, name="affiche_borne"),

@@ -1,0 +1,37 @@
+{% load i18n l10n %}{% localize off %}
+<article class="clameur" id="clameur-{{ clameur.capsule.uuid }}"
+         data-uuid="{{ clameur.capsule.uuid }}"
+         data-x="{{ clameur.x }}" data-y="{{ clameur.y }}"
+         data-teinte="{{ clameur.teinte }}" data-ecoutes="{{ clameur.capsule.nombre_ecoutes }}"
+         style="--astre: oklch(0.76 0.13 {{ clameur.teinte }}); --astre-sourd: oklch(0.32 0.055 {{ clameur.teinte }})">
+  <!-- `localize off` EST INDISPENSABLE ICI. En francais, Django rend les
+       flottants avec une virgule decimale. Number() renvoie alors NaN, et les
+       cent etoiles se retrouvent avec des coordonnees NaN : un ciel vide, sans
+       la moindre erreur en console.
+       (Aucun exemple chiffre dans ce commentaire : il serait relu par le test
+       qui verifie justement l'absence de virgule dans les positions.)
+       / Without it the French locale uses decimal commas and every star is NaN. -->
+  <button type="button" class="clameur-tete" data-choisir="{{ clameur.capsule.uuid }}">
+    <span class="pastille-liste" aria-hidden="true"></span>
+    <span>
+      <span class="clameur-nom">{{ clameur.capsule.pseudo|default:_("Anonyme") }}</span>
+      <span class="clameur-meta">
+        · {{ clameur.duree }}{% for tag in clameur.tags %} · {{ tag }}{% endfor %}
+      </span>
+    </span>
+  </button>
+
+  <!-- preload="none" est indispensable : cent lecteurs qui chargeraient leurs
+       metadonnees a l'ouverture, ce serait cent requetes pour rien.
+       / preload="none": a hundred players must not each fetch metadata. -->
+  <div class="puits-lecteur">
+    <audio class="lecteur-de-fiche" controls preload="none"
+         data-uuid="{{ clameur.capsule.uuid }}"
+         aria-label="{% blocktranslate with nom=clameur.capsule.pseudo|default:_('Anonyme') %}Écouter la clameur de {{ nom }}{% endblocktranslate %}">
+      <source src="{{ clameur.audio }}" type="audio/mp4">
+    </audio>
+  </div>
+
+  {% include "capsules/_transcription.html" with capsule=clameur.capsule segments=clameur.segments %}
+</article>
+{% endlocalize %}

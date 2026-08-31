@@ -1,12 +1,38 @@
 {% extends "base.html" %}
 {% load i18n %}
 {% block titre %}{% translate "Mentions légales" %}{% endblock %}
+
+{% block styles %}
+<style>
+  .mentions h2 {
+    font-size: var(--text-2xl); margin: var(--space-2xl) 0 var(--space-xs);
+  }
+  .mentions h2:first-of-type { margin-top: var(--space-xl); }
+  .mentions p { max-width: 34rem; }
+</style>
+{% endblock %}
+
 {% block contenu %}
+<div class="mentions">
   <h1>{% translate "Mentions légales" %}</h1>
-  <h2 style="font-size:1rem">{% translate "Éditeur" %}</h2>
+
+  <h2>{% translate "Éditeur" %}</h2>
   <p class="doux">{% translate "À compléter avant toute mise en ligne publique." %}</p>
-  <h2 style="font-size:1rem">{% translate "Signaler une clameur" %}</h2>
+
+  <h2>{% translate "Signaler une clameur" %}</h2>
   <p class="doux">
     {% translate "Toute capsule peut être retirée sur demande. Écrivez à l'adresse de contact ci-dessus en indiquant le lien du ticket." %}
   </p>
+
+  <h2>{% translate "Ce que le site conserve" %}</h2>
+  <p class="doux">
+    {% translate "L'enregistrement sonore, la photo si tu en as joint une, le pseudo et les mots-clés que tu as saisis. Rien d'autre : ni compte, ni position, ni identifiant publicitaire." %}
+  </p>
+
+  <p style="margin-top: var(--space-2xl)">
+    <a class="porte porte--fantome" href="{% url 'capsules:constellation' %}">
+      {% translate "Retour à la constellation" %}
+    </a>
+  </p>
+</div>
 {% endblock %}

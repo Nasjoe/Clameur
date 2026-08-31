@@ -57,3 +57,12 @@ def test_le_type_mime_du_m4a_est_connu():
 
     type_devine, _encodage = mimetypes.guess_type("capsule.m4a")
     assert type_devine == "audio/mp4", f"m4a servi en {type_devine}"
+
+
+def test_le_type_mime_des_polices_est_connu():
+    """Sans cette déclaration, le `<link rel="preload" as="font">` est ignoré
+    et la police est téléchargée deux fois."""
+    import mimetypes
+
+    type_devine, _encodage = mimetypes.guess_type("police.woff2")
+    assert type_devine == "font/woff2", f"woff2 servi en {type_devine}"

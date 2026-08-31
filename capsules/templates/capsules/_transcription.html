@@ -1,0 +1,34 @@
+<div class="transcription" id="transcription-{{ capsule.uuid }}"{% if oob %} hx-swap-oob="outerHTML"{% endif %}>
+  {% load i18n %}
+  <!-- Commentaires en HTML et A L'INTERIEUR du premier element : un commentaire
+       Django place avant lui ressortirait en texte brut dans un swap HTMX.
+       / HTML comments, inside the first element: a Django comment placed before
+         it would show up as raw text in an HTMX swap. -->
+  {% if segments %}
+    <details class="depliant">
+      <summary>
+        <span class="apercu">{{ capsule.transcription_texte|truncatechars:110 }}</span>
+        <span class="depliant-signal" aria-hidden="true"></span>
+      </summary>
+      <div class="paroles">
+        {% for segment in segments %}
+          <p class="parole" style="--voix: {{ segment.couleur }}">
+            <span class="locuteur">{{ segment.speaker }}</span><br>{{ segment.text }}
+          </p>
+        {% endfor %}
+      </div>
+    </details>
+  {% elif capsule.erreur_enrichissement %}
+    <p class="attente" title="{{ capsule.erreur_enrichissement }}">
+      {% translate "Transcription indisponible." %}
+    </p>
+  {% else %}
+    <!-- La fiche s'affiche SANS ATTENDRE la transcription. Le texte arrivera
+         par WebSocket quand Voxtral aura fini, sans rechargement.
+         / The card shows immediately; the text arrives later over WebSocket. -->
+    <p class="attente" aria-live="polite">
+      <span class="pouls" aria-hidden="true"></span>
+      {% translate "Transcription en cours…" %}
+    </p>
+  {% endif %}
+</div>

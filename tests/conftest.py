@@ -11,6 +11,25 @@ from capsules.models import Capsule, StatutCapsule
 
 
 @pytest.fixture(autouse=True)
+def statiques_sans_empreinte(settings):
+    """Les tests ne passent jamais par `collectstatic`.
+
+    En production, `ManifestStaticFilesStorage` exige un manifeste et fait
+    echouer tout `{% static %}` qui n'y figure pas. Sans cette surcharge, la
+    suite dependrait de la valeur de DEBUG dans le `.env` du moment : elle
+    passerait chez l'un et casserait chez l'autre.
+    / Tests never run collectstatic; without this the suite would depend on
+      whatever DEBUG says in the local .env.
+    """
+    settings.STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.StaticFilesStorage"
+        },
+    }
+
+
+@pytest.fixture(autouse=True)
 def medias_temporaires(settings, tmp_path):
     """Aucun test n'ecrit dans le vrai dossier medias.
     / No test writes into the real media folder."""
@@ -68,3 +87,14 @@ def capsule_publiee(capsule):
     capsule.statut = StatutCapsule.PUBLIEE
     capsule.save()
     return capsule
+
+
+@pytest.fixture
+def corpus_pret(db):
+    """Un petit corpus deja projete, pret pour la page constellation.
+    / A small, already-projected corpus."""
+    from django.core.management import call_command
+
+    call_command("creer_des_clameurs", nombre=6, vider=True, verbosity=0)
+    call_command("projeter_la_constellation", verbosity=0)
+    return Capsule.objects.all()

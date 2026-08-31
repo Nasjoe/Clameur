@@ -5,22 +5,43 @@
 
 {% block styles %}
 <style>
-  .scene { display: flex; flex-direction: column; gap: 1.25rem; }
+  .scene { display: flex; flex-direction: column; gap: var(--space-lg); }
+
   .portrait {
     width: 100%; aspect-ratio: 4/3; object-fit: cover;
-    border-radius: var(--rayon); border: 1px solid var(--trait);
-    filter: saturate(.85) contrast(1.05);
+    border-radius: var(--radius-lg);
+    border: var(--rule-porte) solid var(--color-trait);
   }
-  /* Le bouton occupe l'ecran : c'est le seul geste demande au passant.
-     / One button, screen-sized: the only gesture asked of a passer-by. */
-  .ecouter { padding: 1.4rem; font-size: 1.2rem; }
-  .etiquettes { display: flex; flex-wrap: wrap; gap: .4rem; list-style: none; padding: 0; margin: 0; }
+
+  /* Le bouton d'ecoute occupe l'ecran : c'est le seul geste demande au
+     passant, et l'ombre dure lui donne l'epaisseur d'une touche.
+     / One screen-sized button; the hard shadow gives it the depth of a key. */
+  .ecouter { font-size: var(--text-xl); padding: var(--space-lg); }
+
+  .etiquettes {
+    display: flex; flex-wrap: wrap; gap: var(--space-xs);
+    list-style: none; padding: 0; margin: 0;
+  }
   .etiquettes li {
-    border: 1px solid var(--trait); border-radius: 999px;
-    padding: .2rem .8rem; font-size: .85rem; color: #9a9aa8;
+    border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
+    padding: var(--space-2xs) var(--space-sm);
+    font-size: var(--text-sm); color: var(--color-ink-doux);
   }
-  .parole { margin: 0 0 .75rem; padding-left: .9rem; border-left: 2px solid var(--voix); }
-  .locuteur { font-size: .75rem; text-transform: uppercase; letter-spacing: .08em; color: var(--voix); }
+
+  .puits-lecteur {
+    background: var(--color-paper-3); border-radius: var(--radius-md);
+    padding: var(--space-2xs) var(--space-xs);
+  }
+  .puits-lecteur audio { width: 100%; height: 36px; display: block; color-scheme: dark; }
+
+  .parole {
+    margin: 0 0 var(--space-sm); padding-left: var(--space-sm);
+    border-left: 2px solid var(--voix);
+  }
+  .locuteur {
+    font-size: var(--text-xs); font-weight: 600; text-transform: uppercase;
+    letter-spacing: var(--tracking-label); color: var(--voix);
+  }
 </style>
 {% endblock %}
 
@@ -45,23 +66,30 @@
     Tout le travail consiste donc a donner envie d'appuyer.
     / Autoplay is blocked on mobile: the work is making people want to press.
   {% endcomment %}
-  <button class="bouton ecouter" id="bouton-ecouter" type="button">
+  <button class="porte porte--pleine porte--large ecouter" id="bouton-ecouter" type="button">
     ▶ {% translate "Écouter" %}
   </button>
-  <audio id="lecteur" preload="none" controls hidden style="width:100%">
-    <source src="{{ capsule.audio_a_servir.url }}">
-  </audio>
+  <div class="puits-lecteur" id="puits" hidden>
+    <audio id="lecteur" preload="none" controls>
+      <source src="{{ capsule.audio_a_servir.url }}" type="audio/mp4">
+    </audio>
+  </div>
 
   {% if segments %}
     <section aria-label="{% translate 'Transcription' %}" style="margin-top:1rem">
-      <h2 style="font-size:.95rem;color:#9a9aa8;font-weight:600">{% translate "Ce qui est dit" %}</h2>
+      <h3 class="etiquette" style="margin-bottom:var(--space-sm)">{% translate "Ce qui est dit" %}</h3>
       {% for segment in segments %}
-        <p class="parole" style="--voix: {% cycle '#e8703a' '#5aa9e6' '#7ec87e' '#c98ae0' '#e6c65a' %}">
+        <p class="parole" style="--voix: {{ segment.couleur }}">
           <span class="locuteur">{{ segment.speaker }}</span><br>{{ segment.text }}
         </p>
       {% endfor %}
     </section>
   {% endif %}
+  <p style="margin-top:.5rem">
+    <a class="porte porte--fantome porte--large" href="{% url 'capsules:constellation' %}">
+      {% translate "Découvrir les autres clameurs" %}
+    </a>
+  </p>
 </div>
 {% endblock %}
 
@@ -72,7 +100,7 @@
   const bouton = document.getElementById("bouton-ecouter");
   const lecteur = document.getElementById("lecteur");
   bouton.addEventListener("click", () => {
-    lecteur.hidden = false;
+    document.getElementById("puits").hidden = false;
     bouton.hidden = true;
     lecteur.play();
     fetch("{% url 'capsules:compter_une_ecoute' capsule.uuid %}", {

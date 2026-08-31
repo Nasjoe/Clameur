@@ -41,6 +41,12 @@ if os.environ.get("DOMAIN"):
     CSRF_TRUSTED_ORIGINS.append(f"https://{os.environ['DOMAIN']}")
 
 INSTALLED_APPS = [
+    # DAPHNE EN PREMIER, ET AVANT `staticfiles`. C'est ce qui fait basculer
+    # `runserver` en ASGI : sans lui, les routes /ws/ repondent 404 en
+    # developpement et aucune mise a jour temps reel n'arrive.
+    # / daphne first: this is what switches runserver to ASGI.
+    "daphne",
+    "channels",
     "django.contrib.admin",
     "django.contrib.auth",
     "django.contrib.contenttypes",
@@ -67,6 +73,7 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "clameur.urls"
 WSGI_APPLICATION = "clameur.wsgi.application"
+ASGI_APPLICATION = "clameur.asgi.application"
 
 TEMPLATES = [
     {
@@ -115,8 +122,31 @@ LOCALE_PATHS = [BASE_DIR / "locale"]
 #   and shows a dead player.
 mimetypes.add_type("audio/mp4", ".m4a")
 
+# Meme oubli de Python pour les polices. Ici la consequence est plus sournoise :
+# le `<link rel="preload" as="font" type="font/woff2">` de base.html est
+# IGNORE quand le type annonce ne correspond pas, et le fichier est alors
+# telecharge une seconde fois au moment ou la feuille de styles le reclame.
+# / Same gap for fonts: a mismatched type makes the preload be discarded and
+#   the file fetched twice.
+mimetypes.add_type("font/woff2", ".woff2")
+
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
+
+# EN PRODUCTION, LES STATIQUES PORTENT LEUR EMPREINTE DANS LEUR NOM
+# (constellation.a1b2c3d4.js). Sans cela, un visiteur qui a l'ancien fichier
+# en cache continue de l'executer apres un deploiement : la page se casse en
+# silence, chez lui seul, et on ne peut pas le reproduire. Le risque est reel
+# ici — les tickets restent colles dans la rue pendant des semaines.
+# En developpement on garde les noms simples, plus lisibles pour deboguer.
+# / Hashed names in production: a stale cached file breaks the page silently.
+if not DEBUG:
+    STORAGES = {
+        "default": {"BACKEND": "django.core.files.storage.FileSystemStorage"},
+        "staticfiles": {
+            "BACKEND": "django.contrib.staticfiles.storage.ManifestStaticFilesStorage"
+        },
+    }
 MEDIA_URL = "medias/"
 MEDIA_ROOT = BASE_DIR / "medias"
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
@@ -139,6 +169,17 @@ CELERY_BROKER_CONNECTION_RETRY_ON_STARTUP = True
 # Le cache porte deux garde-fous : l'etat de l'imprimante (30 s) et le throttle
 # anti-abus. Sans lui, chaque visiteur taperait l'API Sunmi.
 # / The cache carries printer state and the anti-abuse throttle.
+# La couche de canaux passe par Redis : gunicorn (qui publie apres une
+# transcription) et daphne (qui tient les connexions) sont deux process
+# distincts. Une couche en memoire ne les relierait pas.
+# / Redis-backed layer: the publisher and the socket holder are separate processes.
+CHANNEL_LAYERS = {
+    "default": {
+        "BACKEND": "channels_redis.core.RedisChannelLayer",
+        "CONFIG": {"hosts": [REDIS_URL]},
+    }
+}
+
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.redis.RedisCache",

@@ -4,76 +4,196 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>{% block titre %}{% translate "Clameur" %}{% endblock %}</title>
+
+  {% comment %}
+    Les deux fichiers `latin` sont precharges : ce sont eux qui portent le
+    francais courant, et sans preload le navigateur ne les decouvre qu'apres
+    avoir lu, telecharge et analyse la feuille de styles.
+    `crossorigin` est obligatoire meme en meme origine — une police se recupere
+    toujours en mode anonyme, et sans l'attribut le preload est ignore puis
+    refait, donc telecharge deux fois.
+    / The latin files are preloaded; crossorigin is required even same-origin,
+      otherwise the preload is discarded and the file is fetched twice.
+  {% endcomment %}
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="{% static 'capsules/polices/bricolage-grotesque-latin.woff2' %}">
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="{% static 'capsules/polices/plus-jakarta-sans-latin.woff2' %}">
+  <link rel="stylesheet" href="{% static 'capsules/polices/polices.css' %}">
+  <link rel="stylesheet" href="{% static 'capsules/tokens.css' %}">
+
   <style>
-    /* Une nuit : fond profond, une seule couleur chaude, beaucoup d'air.
-       / A night sky: deep ground, one warm accent, plenty of air. */
-    :root {
-      --nuit: #0b0d14;
-      --nuit-claire: #161a26;
-      --texte: #e8e6df;
-      --texte-doux: #9a9aa8;
-      --braise: #e8703a;
-      --trait: rgba(232, 230, 223, .14);
-      --rayon: 14px;
-    }
-    * { box-sizing: border-box; }
-    html, body { margin: 0; padding: 0; }
+    *, *::before, *::after { box-sizing: border-box; }
+
+    /* `clip` et non `hidden` : `hidden` sur la racine casse le defilement
+       ancre et fige `position: sticky`.
+       / clip, not hidden: hidden on the root breaks scroll anchoring. */
+    html, body { margin: 0; padding: 0; overflow-x: clip; }
+
     body {
-      background: radial-gradient(120% 80% at 50% 0%, #1a1f30 0%, var(--nuit) 60%);
-      color: var(--texte);
-      font: 16px/1.6 ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: var(--color-paper);
+      color: var(--color-ink);
+      font-family: var(--font-body);
+      font-size: var(--text-lg);
+      line-height: 1.55;
       min-height: 100dvh;
       -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
     }
+
     main {
-      max-width: 34rem; margin: 0 auto;
-      padding: max(2rem, env(safe-area-inset-top)) 1.25rem 3rem;
+      /* ~66 caracteres a notre corps de texte : la fourchette ou l'oeil
+         retrouve la ligne suivante sans effort.
+         / ~66ch, the range where the eye finds the next line. */
+      max-width: 38rem; margin: 0 auto;
+      padding: max(var(--space-2xl), env(safe-area-inset-top)) var(--space-lg) var(--space-3xl);
       min-height: 100dvh; display: flex; flex-direction: column;
     }
-    h1 { font-size: 1.9rem; line-height: 1.15; letter-spacing: -.02em; margin: 0 0 .5rem; }
-    .doux { color: #9a9aa8; }
-    .bouton {
-      display: inline-flex; align-items: center; justify-content: center; gap: .6rem;
-      width: 100%; padding: 1.05rem 1.5rem; border: 0; border-radius: var(--rayon);
-      background: var(--braise); color: #150b06;
-      font: inherit; font-weight: 650; font-size: 1.05rem; cursor: pointer;
-      transition: transform .12s ease, filter .12s ease;
+
+    /* --- Titres : romains, toujours. Un titre en italique est le tell le
+       plus fiable d'une page generee. L'emphase passe par la graisse et la
+       couleur. / Headings stay roman; emphasis comes from weight and colour. --- */
+    h1, h2, h3 {
+      font-family: var(--font-display);
+      font-weight: 800; font-style: normal;
+      letter-spacing: var(--tracking-display);
+      line-height: 1.02;
+      /* Un mot long ne doit jamais deborder sur un petit ecran.
+         / A long word must never overflow a narrow screen. */
+      overflow-wrap: anywhere; min-width: 0;
+      margin: 0 0 var(--space-sm);
+    }
+    h1 { font-size: var(--text-display); }
+    h2 { font-size: var(--text-display-s); }
+    h3 { font-size: var(--text-2xl); letter-spacing: -0.02em; }
+
+    p { margin: 0 0 var(--space-md); }
+    a { color: var(--color-ink); text-decoration-color: var(--color-accent);
+        text-underline-offset: 3px; }
+    .doux { color: var(--color-ink-doux); }
+    .tenu { color: var(--color-ink-tenu); }
+
+    /* --- LA PORTE ------------------------------------------------------
+       Le composant signature, repris de la reference. Ombre dure decalee,
+       sans flou, de la couleur de la bordure. Au survol l'objet se deplace
+       de son propre decalage et l'ombre tombe a zero : il s'enfonce dedans.
+       / The signature: a hard offset shadow the object sinks into on hover. --- */
+    .porte {
+      --porte-teinte: var(--color-braise);
+      --porte-fond:   var(--color-braise-sourd);
+      --porte-ombre:  var(--porte-teinte);
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: var(--space-xs);
+      padding: var(--space-sm) var(--space-md);
+      border: var(--rule-porte) solid var(--porte-teinte);
+      border-radius: var(--radius-md);
+      background: var(--porte-fond);
+      color: var(--color-ink);
+      font: inherit; font-weight: 600; text-decoration: none;
+      cursor: pointer;
+      box-shadow: var(--porte-decalage) var(--porte-decalage) 0 0 var(--porte-ombre);
+      transition: transform var(--dur-moyen) var(--ease-out),
+                  box-shadow var(--dur-moyen) var(--ease-out);
       -webkit-tap-highlight-color: transparent;
     }
-    .bouton:hover { filter: brightness(1.06); }
-    .bouton:active { transform: scale(.985); }
-    .bouton:disabled { opacity: .45; cursor: not-allowed; }
-    .bouton--fantome { background: transparent; color: var(--texte); border: 1px solid var(--trait); }
+    .porte:hover, .porte.est-survolee {
+      transform: translate(var(--porte-decalage), var(--porte-decalage));
+      box-shadow: 0 0 0 0 var(--porte-ombre);
+    }
+    .porte:active, .porte.est-pressee {
+      transform: translate(var(--porte-decalage), calc(var(--porte-decalage) + 1px));
+      box-shadow: 0 0 0 0 var(--porte-ombre);
+    }
+    .porte:disabled, .porte[aria-disabled="true"] {
+      opacity: .45; cursor: not-allowed;
+      transform: none; box-shadow: var(--porte-decalage) var(--porte-decalage) 0 0 var(--porte-ombre);
+    }
+    .porte--ambre { --porte-teinte: var(--color-ambre); --porte-fond: var(--color-ambre-sourd);
+                    --porte-sombre: var(--color-ambre-ombre); }
+    .porte--rose  { --porte-teinte: var(--color-rose);  --porte-fond: var(--color-rose-sourd);
+                    --porte-sombre: var(--color-rose-ombre); }
+
+    /* La porte pleine porte l'action principale. Son ombre passe a la teinte
+       assombrie, sans quoi elle se fondrait dans le remplissage.
+       / A filled door needs the darkened shadow, or it melts into its fill. */
+    .porte--pleine {
+      background: var(--porte-teinte); color: var(--color-sur-accent);
+      --porte-ombre: var(--porte-sombre, var(--color-braise-ombre));
+    }
+    .porte--large { width: 100%; }
+    .porte--grande { padding: var(--space-md) var(--space-lg); font-size: var(--text-xl); }
+
+    /* Le fantome garde l'ombre dure : c'est elle qui fait la famille, pas
+       le remplissage. / The ghost keeps the hard shadow: that is the family trait. */
+    .porte--fantome {
+      --porte-fond: transparent;
+      --porte-teinte: var(--color-trait);
+      color: var(--color-ink-doux);
+    }
+    .porte--fantome:hover { color: var(--color-ink); }
+
+    /* --- Champs ---------------------------------------------------------- */
     .champ {
-      width: 100%; padding: .85rem 1rem; border-radius: var(--rayon);
-      border: 1px solid var(--trait); background: var(--nuit-claire);
-      color: var(--texte); font: inherit;
+      width: 100%; padding: var(--space-sm) var(--space-md);
+      border: var(--rule-porte) solid var(--color-trait);
+      border-radius: var(--radius-md);
+      background: var(--color-paper-2); color: var(--color-ink);
+      font: inherit;
+      transition: border-color var(--dur-court) var(--ease-out);
     }
-    .champ:focus-visible, .bouton:focus-visible {
-      outline: 2px solid var(--braise); outline-offset: 3px;
-    }
+    .champ::placeholder { color: var(--color-ink-tenu); }
+    .champ:hover { border-color: var(--color-ink-tenu); }
+
+    /* L'anneau de focus ne s'anime JAMAIS : il doit etre la a l'instant ou
+       le focus arrive. / The focus ring never animates: it must be instant. */
+    :focus-visible { outline: 3px solid var(--color-focus); outline-offset: 4px; }
+    .porte:focus-visible { outline-offset: 5px; }
+
     .carte {
-      background: var(--nuit-claire); border: 1px solid var(--trait);
-      border-radius: var(--rayon); padding: 1rem 1.15rem;
+      background: var(--color-paper-2);
+      border: 1px solid var(--color-trait);
+      border-radius: var(--radius-lg);
+      padding: var(--space-md) var(--space-lg);
     }
-    .avis { border-left: 3px solid var(--braise); padding-left: .9rem; }
-    .pied { margin-top: auto; padding-top: 2.5rem; font-size: .8rem; }
-    .pied a { color: #9a9aa8; }
-    /* color-scheme suffit a rendre les controles media en sombre : c'est la
-       seule facon standard de le faire, styliser ::-webkit-media-controls
-       ne marche que sur Chrome. / The only standard way to darken media controls. */
-    audio { color-scheme: dark; width: 100%; }
+    .avis { border-left: 3px solid var(--color-ambre); padding-left: var(--space-md); }
+
+    .etiquette {
+      display: inline-block;
+      font-size: var(--text-xs); font-weight: 600;
+      letter-spacing: var(--tracking-label); text-transform: uppercase;
+      color: var(--color-ink-doux);
+    }
+
+    .pied { margin-top: auto; padding-top: var(--space-2xl); font-size: var(--text-sm); }
+    .pied a { color: var(--color-ink-tenu); }
+    .pied a:hover { color: var(--color-ink-doux); }
+
     [hidden] { display: none !important; }
-    @media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+
+    /* Le mouvement spatial disparait ; la couleur et l'opacite restent.
+       / Spatial motion goes; colour and opacity stay. */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important; animation-iteration-count: 1 !important;
+        transition-duration: 0.01ms !important; scroll-behavior: auto !important;
+      }
+      .porte:hover, .porte:active { transform: none; }
+    }
   </style>
   {% block styles %}{% endblock %}
 </head>
 <body>
   <main>
     {% block contenu %}{% endblock %}
-    <footer class="pied doux">
-      <a href="{% url 'capsules:mentions_legales' %}">{% translate "Mentions légales" %}</a>
-    </footer>
+    {% comment %}
+      Les vues plein ecran placent leur pied elles-memes, dans le panneau qui
+      leur convient. / Full-screen views place their own footer.
+    {% endcomment %}
+    {% block pied %}
+      <footer class="pied">
+        <a href="{% url 'capsules:mentions_legales' %}">{% translate "Mentions légales" %}</a>
+      </footer>
+    {% endblock %}
   </main>
   {% block scripts %}{% endblock %}
 </body>

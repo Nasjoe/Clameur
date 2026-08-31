@@ -163,3 +163,21 @@ def test_l_affiche_porte_le_qr_de_la_borne(client, borne, django_user_model):
     assert "<svg" in contenu, "aucun QR code sur l'affiche"
     assert f"/b/{borne.slug}" in contenu
     assert "A4" in contenu, "format d'impression non défini"
+
+
+@pytest.mark.django_db
+def test_un_meme_locuteur_garde_la_meme_couleur(client, capsule_publiee):
+    """Colorer au fil des segments donnerait deux teintes a la meme personne
+    qui parle deux fois : la transcription deviendrait illisible."""
+    capsule_publiee.transcription_raw = {"segments": [
+        {"speaker": "voix 1", "start": 0, "end": 1, "text": "Premier."},
+        {"speaker": "voix 2", "start": 1, "end": 2, "text": "Deuxième."},
+        {"speaker": "voix 1", "start": 2, "end": 3, "text": "Le premier revient."},
+    ]}
+    capsule_publiee.save()
+
+    from capsules.views import _colorer_les_voix
+
+    segments = _colorer_les_voix(capsule_publiee.transcription_raw["segments"])
+    assert segments[0]["couleur"] == segments[2]["couleur"], "même voix, couleurs différentes"
+    assert segments[0]["couleur"] != segments[1]["couleur"], "deux voix, même couleur"

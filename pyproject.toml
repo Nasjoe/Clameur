@@ -18,16 +18,20 @@ dependencies = [
     # QR code de l'affiche, en SVG. Pure Python, sans dependance.
     # / Poster QR code as SVG. Pure Python, no dependency.
     "segno>=1.6",
+    "channels>=4.2",
+    "channels-redis>=4.2",
+    "daphne>=4.1",
     "gunicorn>=23",
     "supervisor>=4.2",
 ]
 
 [dependency-groups]
-dev = ["pytest>=8", "pytest-django>=4.9", "ruff>=0.8"]
+dev = ["pytest>=8", "pytest-django>=4.9", "pytest-asyncio>=0.24", "ruff>=0.8"]
 
 [tool.pytest.ini_options]
 DJANGO_SETTINGS_MODULE = "clameur.settings"
 python_files = ["test_*.py"]
+asyncio_mode = "strict"
 testpaths = ["tests"]
 
 [tool.ruff]
