@@ -123,12 +123,14 @@ def test_l_invitation_porte_le_qr_de_la_borne_active(client, corpus_projete):
     from bornes.models import Borne
 
     cache.clear()
-    borne = Borne.objects.filter(active=True).first()
+    assert Borne.objects.filter(active=True).exists()
     contenu = client.get("/").content.decode()
 
     assert "Enregistrer une nouvelle clameur" in contenu
     assert "<svg" in contenu, "pas de QR dans l'invitation"
-    assert f"/b/{borne.slug}" in contenu
+    # L'invitation vise l'adresse courte, pas le slug de la borne : c'est elle
+    # qu'on encode dans le QR et qu'on dit à voix haute.
+    assert "/nouvelle" in contenu
 
 
 @pytest.mark.django_db
@@ -144,3 +146,43 @@ def test_sans_borne_active_aucune_invitation_n_est_proposee(client, corpus_proje
 
     contenu = client.get("/").content.decode()
     assert "Enregistrer une nouvelle clameur" not in contenu
+
+
+@pytest.mark.django_db
+def test_l_adresse_courte_mene_a_la_borne_ouverte(client, corpus_projete):
+    """`/nouvelle` tient dans une phrase qu'on dit à voix haute, contrairement
+    à `/b/<slug>`. C'est elle qu'on encode dans le QR."""
+    from django.core.cache import cache
+
+    cache.clear()
+    reponse = client.get("/nouvelle")
+    assert reponse.status_code == 200
+    assert "Dépose une clameur" in reponse.content.decode()
+
+    contenu = client.get("/").content.decode()
+    assert 'href="/nouvelle"' in contenu, "l'invitation doit mener à l'adresse courte"
+    assert "Enregistrer avec cet appareil" in contenu
+
+
+@pytest.mark.django_db
+def test_sans_borne_ouverte_l_adresse_courte_repond_404(client, corpus_projete):
+    from bornes.models import Borne
+    from django.core.cache import cache
+
+    Borne.objects.update(active=False)
+    cache.clear()
+    assert client.get("/nouvelle").status_code == 404
+
+
+@pytest.mark.django_db
+def test_le_qr_porte_un_viewbox(client, corpus_projete):
+    """Segno n'en émet aucun : le canevas s'étirait sans que le dessin suive,
+    et le code se retrouvait tassé dans un coin de la modale.
+    / Segno emits none, so the drawing stayed put while the canvas stretched."""
+    from django.core.cache import cache
+
+    cache.clear()
+    contenu = client.get("/").content.decode()
+    assert 'class="segno"' in contenu
+    debut = contenu.index('class="segno"') - 400
+    assert "viewBox" in contenu[debut:debut + 500], "le QR ne se mettra pas à l'échelle"
