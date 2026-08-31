@@ -3,6 +3,10 @@
 
 {% block titre %}{% translate "La constellation" %}{% endblock %}
 
+{% block og_titre %}{% translate "La constellation des clameurs" %}{% endblock %}
+{# Le cas zero merite sa phrase : « 0 clameurs deposees » sonne comme une panne. #}
+{% block og_description %}{% if nombre %}{% blocktranslate count n=nombre %}Une clameur déposée, à écouter.{% plural %}{{ n }} clameurs déposées, placées par proximité de sens.{% endblocktranslate %}{% else %}{% translate "Un ciel encore vide. La première clameur reste à déposer." %}{% endif %}{% endblock %}
+
 {% block styles %}
 <style>
   main { max-width: none; padding: 0; height: 100dvh; }

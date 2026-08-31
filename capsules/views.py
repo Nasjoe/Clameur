@@ -6,11 +6,12 @@ import math
 import segno
 from django.conf import settings
 from django.contrib.admin.views.decorators import staff_member_required
+from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F
 from django.http import Http404, HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
@@ -473,6 +474,55 @@ def _teinte_de_la_position(x: float, y: float) -> int:
     """
     angle = (math.degrees(math.atan2(y - 0.5, x - 0.5)) + 180) % 360
     return int(TEINTE_DEPART + angle / 360 * ETENDUE_DES_TEINTES) % 360
+
+
+# LES DEPIAUTEURS DE LIENS NE SONT PAS DES MOTEURS. Ils chargent une page une
+# fois, pour en tirer un titre et une image, et ils n'indexent rien. Plusieurs
+# d'entre eux respectent robots.txt : un `Disallow` global les ferait renoncer,
+# et un lien de clameur arriverait nu dans une conversation — precisement ce
+# que les metadonnees de partage existent pour eviter.
+# / Several unfurlers obey robots.txt: a blanket Disallow would strip every
+#   shared link of its preview, which is the opposite of what we want.
+DEPIAUTEURS_DE_LIENS = [
+    "Twitterbot",
+    "facebookexternalhit",  # Facebook, Messenger et WhatsApp
+    "WhatsApp",
+    "LinkedInBot",
+    "Slackbot-LinkExpanding",
+    "Discordbot",
+    "TelegramBot",
+    "Mastodon",
+]
+
+
+@require_GET
+def robots(request):
+    """Ce que le site demande aux robots : passer leur chemin.
+
+    Une clameur est deposee pour un mur, pas pour un moteur de recherche. Les
+    UUID ne sont pas enumerables, mais la constellation les liste toutes : un
+    moteur qui l'explore trouverait le corpus entier.
+    / A clameur is left for a wall, not for a search engine.
+    """
+    return render(
+        request, "robots.txt",
+        {"depiauteurs": DEPIAUTEURS_DE_LIENS},
+        content_type="text/plain; charset=utf-8",
+    )
+
+
+@require_GET
+def icone_du_site(request):
+    """`/favicon.ico`, que les robots et les vieux navigateurs demandent seuls.
+
+    La page declare ses icones, mais beaucoup d'agents tapent cette adresse
+    sans lire le HTML. On resout le chemin ICI et non a l'import : en
+    production les statiques portent leur empreinte, et le manifeste qui la
+    donne n'existe qu'apres `collectstatic`.
+    / Resolved per request: in production the hashed name comes from a
+      manifest that only exists after collectstatic.
+    """
+    return redirect(staticfiles_storage.url("capsules/marque/icone-32.png"))
 
 
 @require_GET

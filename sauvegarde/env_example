@@ -1,0 +1,36 @@
+# Copier ce fichier en .env DANS CE DOSSIER, puis lancer `make init` :
+#   cp env_example .env && chmod 600 .env && make init
+#
+# CE FICHIER EST DISTINCT DU .env DE LA PILE, et ce n'est pas un detail : le
+# .env de la racine est passe aux conteneurs (`env_file:` du compose). La
+# passphrase du depot de sauvegarde n'a rien a faire dans l'environnement de
+# Django, de Celery ni de nginx.
+# / Separate from the stack's .env: that one is handed to the containers, and
+#   the repository passphrase has no business in Django's environment.
+#
+# CONVENTION : les scripts ne contiennent AUCUN secret. Tout passe par ce
+# fichier, que git ignore. Un script est fait pour etre copie, versionne,
+# partage — une passphrase ecrite dedans finit tot ou tard sur une forge.
+
+
+##### CE QUI EST SAUVEGARDE #####
+#
+# Rien a regler ici : la sauvegarde prend TOUT le dossier de la pile, dump
+# PostgreSQL compris, en excluant `donnees/postgres` (les fichiers bruts de la
+# base, corrompus si on les copie a chaud) et la cle SSH du depot.
+# Voir sauvegarder.sh, qui l'explique en tete.
+
+
+##### LE DEPOT BORG (ecrit automatiquement par `make init`) #####
+
+# NE RIEN REMPLIR ICI. `make init` genere la cle SSH, cree le depot sur
+# borgwarehouse, tire une passphrase et te la fait mettre au coffre.
+# Laisser ces lignes commentees.
+#
+# BORG_PREFIX=       prefixe des archives, et nom de la cle SSH du depot
+# BORG_REPO=         adresse ssh:// du depot sur borgwarehouse
+# BORG_PASSPHRASE=   passphrase du depot — A METTRE AU COFFRE, avec la cle
+#                    exportee (borg key export) et l'identifiant du depot.
+#                    Sans elles, les archives sont un bloc chiffre
+#                    definitivement illisible.
+# AGE_MAX_HEURES=    age max de la derniere archive avant que `make check` crie

@@ -19,4 +19,8 @@ urlpatterns = [
     path("c/<uuid:uuid>/publier", views.publier_capsule, name="publier_capsule"),
     path("c/<uuid:uuid>/ecoute", views.compter_une_ecoute, name="compter_une_ecoute"),
     path("mentions-legales", views.mentions_legales, name="mentions_legales"),
+    # Deux adresses que personne ne tape et que tout le monde demande.
+    # / Two addresses nobody types and everything requests.
+    path("robots.txt", views.robots, name="robots"),
+    path("favicon.ico", views.icone_du_site, name="icone_du_site"),
 ]

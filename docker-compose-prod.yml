@@ -4,6 +4,11 @@
 # Le reseau `frontend` est celui de la stack TraefikV3, il existe deja.
 # / The `frontend` network belongs to the TraefikV3 stack.
 
+# Le nom du projet est explicite : voir docker-compose.yml, qui explique
+# pourquoi. Les deux fichiers doivent porter des noms DIFFERENTS.
+# / Explicit project name; the two files must never share one.
+name: clameur
+
 services:
   db:
     image: pgvector/pgvector:pg17

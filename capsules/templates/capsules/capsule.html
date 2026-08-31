@@ -3,6 +3,27 @@
 
 {% block titre %}{% translate "Une clameur" %}{% endblock %}
 
+{% comment %}
+  L'APERCU D'UN LIEN PARTAGE. Pseudo, mots-cles, duree : exactement ce que dit
+  le ticket papier, et rien de plus. La transcription reste sur la page — la
+  recopier ici l'emporterait dans des historiques de conversation que son
+  auteur n'a pas choisis.
+  / Exactly what the paper ticket says. The transcript stays on the page.
+{% endcomment %}
+{% block og_titre %}{% if capsule.pseudo %}{% blocktranslate with pseudo=capsule.pseudo %}Une clameur de {{ pseudo }}{% endblocktranslate %}{% else %}{% translate "Une clameur" %}{% endif %}{% endblock %}
+{% block og_description %}{% if tags %}{{ tags|join:" · " }} · {% endif %}{{ duree }}{% endblock %}
+{% block og_image %}{% if capsule.photo %}
+  {% comment %}
+    Ni largeur ni hauteur : les lire ouvrirait le fichier a chaque affichage
+    de la page, et ferait tomber celle-ci si la photo avait disparu du disque.
+    Les depiauteurs mesurent l'image eux-memes.
+    / Reading them would open the file on every render, and break the page if
+      it had vanished. Unfurlers measure the image themselves.
+  {% endcomment %}
+  <meta property="og:image" content="{{ url_publique }}{{ capsule.photo.url }}">
+  <meta property="og:image:alt" content="{% translate "La photo qui accompagne cette clameur." %}">
+{% else %}{{ block.super }}{% endif %}{% endblock %}
+
 {% block styles %}
 <style>
   .scene { display: flex; flex-direction: column; gap: var(--space-lg); }

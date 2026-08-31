@@ -14,6 +14,18 @@ __pycache__/
 # Donnees et artefacts : reconstruits ou montes en volume.
 medias/
 staticfiles/
+
+# LE DOSSIER DE PRODUCTION. Il porte la base et les voix des gens : il n'a
+# rien a faire dans une image, et le build ECHOUE sans cette ligne — les
+# fichiers de PostgreSQL appartiennent a l'utilisateur du conteneur, en 0700,
+# et le demon ne peut pas les lire pour constituer le contexte.
+# / The production data: it has no place in an image, and without this line
+#   the build fails outright on PostgreSQL's 0700 files.
+donnees/
+
+# La sauvegarde : sa cle privee et son .env n'entrent pas dans une image.
+# / The backup's private key and .env stay out of the image.
+sauvegarde/
 .pytest_cache/
 .ruff_cache/
 .hallmark/

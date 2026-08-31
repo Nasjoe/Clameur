@@ -1,3 +1,16 @@
+# Developpement. La production est dans docker-compose-prod.yml.
+
+# LE NOM DU PROJET EST EXPLICITE, ET C'EST UN GARDE-FOU, PAS UNE COQUETTERIE.
+# Sans lui, Compose le deduit du nom du dossier : les deux fichiers portaient
+# alors le meme nom de projet, et `make test` lance sur le serveur recreait les
+# conteneurs `db` et `redis` DE PRODUCTION avec la definition de developpement
+# — volume nomme vide a la place du bind mount, site en erreur 500. Les donnees
+# restaient sur le disque, mais plus personne ne les servait.
+# / Compose derives the project name from the directory: both files claimed the
+#   same one, and `make test` on the server recreated the PRODUCTION db with the
+#   development definition. The data survived on disk; nothing served it.
+name: clameur-dev
+
 services:
   db:
     image: pgvector/pgvector:pg17

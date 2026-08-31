@@ -1,6 +1,9 @@
 {% extends "base.html" %}
 {% load i18n %}
 {% block titre %}{% translate "Clameur retirée" %}{% endblock %}
+
+{% block og_titre %}{% translate "Clameur retirée" %}{% endblock %}
+{% block og_description %}{% translate "Cette clameur a été retirée." %}{% endblock %}
 {% block contenu %}
   <div class="carte" style="border-color: var(--color-ambre); margin-top: var(--space-2xl)">
     {% comment %}

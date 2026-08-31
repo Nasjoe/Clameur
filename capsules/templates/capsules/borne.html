@@ -3,6 +3,9 @@
 
 {% block titre %}{{ borne.nom }} — {% translate "Clameur" %}{% endblock %}
 
+{% block og_titre %}{{ borne.nom }}{% endblock %}
+{% block og_description %}{% translate "Enregistre une capsule sonore et repars avec ton ticket." %}{% endblock %}
+
 {% block styles %}
 <style>
   .chrono {
