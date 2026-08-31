@@ -42,25 +42,25 @@ def test_les_tags_de_l_auteur_apparaissent_sur_le_ticket(capsule):
 
 
 @pytest.mark.django_db
-def test_can_print_refuse_une_borne_sans_numero_de_serie(borne_sans_imprimante, monkeypatch):
+def test_can_print_refuse_une_borne_sans_numero_de_serie(reglages_sans_imprimante, monkeypatch):
     monkeypatch.setenv("SUNMI_APP_ID", "a")
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
-    possible, message = SunmiCloudBackend(borne_sans_imprimante).can_print()
+    possible, message = SunmiCloudBackend(reglages_sans_imprimante).can_print()
     assert possible is False
     assert "série" in message
 
 
 @pytest.mark.django_db
-def test_can_print_refuse_des_credentials_absents(borne, monkeypatch):
+def test_can_print_refuse_des_credentials_absents(reglages, monkeypatch):
     monkeypatch.delenv("SUNMI_APP_ID", raising=False)
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
-    possible, message = SunmiCloudBackend(borne).can_print()
+    possible, message = SunmiCloudBackend(reglages).can_print()
     assert possible is False
     assert "SUNMI_APP_ID" in message
 
 
 @pytest.mark.django_db
-def test_une_api_sunmi_injoignable_ne_leve_jamais(borne, monkeypatch):
+def test_une_api_sunmi_injoignable_ne_leve_jamais(reglages, monkeypatch):
     """Une panne de l'API ne doit pas empecher d'afficher la page d'accueil."""
     monkeypatch.setenv("SUNMI_APP_ID", "a")
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
@@ -68,22 +68,22 @@ def test_une_api_sunmi_injoignable_ne_leve_jamais(borne, monkeypatch):
         "impression.sunmi_cloud_printer.requests.post",
         lambda *a, **k: (_ for _ in ()).throw(OSError("reseau coupe")),
     )
-    en_ligne, message = SunmiCloudBackend(borne).est_en_ligne()
+    en_ligne, message = SunmiCloudBackend(reglages).est_en_ligne()
     assert en_ligne is False
     assert "injoignable" in message
 
 
 @pytest.mark.django_db
-def test_le_mock_imprime_toujours(borne, capsule):
-    possible, _ = MockBackend(borne).can_print()
+def test_le_mock_imprime_toujours(reglages, capsule):
+    possible, _ = MockBackend(reglages).can_print()
     assert possible is True
-    assert MockBackend(borne).print_ticket(capsule, "https://x.example/c/1").startswith("mock_")
+    assert MockBackend(reglages).print_ticket(capsule, "https://x.example/c/1").startswith("mock_")
 
 
 # --------------------------------------------------- la file d'impression
 
 @pytest.mark.django_db
-def test_un_ticket_envoye_n_est_jamais_rejoue(capsule, borne):
+def test_un_ticket_envoye_n_est_jamais_rejoue(capsule, reglages):
     """Celery redélivre les tâches interrompues (`acks_late`). Sans garde, un
     redéploiement au mauvais moment ferait sortir un second ticket identique —
     et le papier ne se rembobine pas.
@@ -94,7 +94,7 @@ def test_un_ticket_envoye_n_est_jamais_rejoue(capsule, borne):
     from impression.tasks import envoyer_le_ticket
 
     job = JobImpression.objects.create(
-        capsule=capsule, borne=borne, statut=StatutJob.ENVOYE, trade_no="deja"
+        capsule=capsule, reglages=reglages, statut=StatutJob.ENVOYE, trade_no="deja"
     )
     with patch("impression.tasks.choisir_le_backend") as backend:
         assert envoyer_le_ticket(job.pk) == StatutJob.ENVOYE
@@ -103,7 +103,7 @@ def test_un_ticket_envoye_n_est_jamais_rejoue(capsule, borne):
 
 @pytest.mark.django_db
 def test_un_backend_qui_refuse_marque_le_job_en_echec(
-    capsule, borne_sans_imprimante, monkeypatch
+    capsule, reglages_sans_imprimante, monkeypatch
 ):
     """Les identifiants sont posés pour que le backend RÉEL soit choisi : sans
     eux, c'est le backend de simulation qui prend la main, et lui imprime
@@ -114,7 +114,7 @@ def test_un_backend_qui_refuse_marque_le_job_en_echec(
     monkeypatch.setenv("SUNMI_APP_ID", "a")
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
 
-    job = JobImpression.objects.create(capsule=capsule, borne=borne_sans_imprimante)
+    job = JobImpression.objects.create(capsule=capsule, reglages=reglages_sans_imprimante)
     assert envoyer_le_ticket(job.pk) == StatutJob.ECHOUE
 
     job.refresh_from_db()
@@ -123,7 +123,7 @@ def test_un_backend_qui_refuse_marque_le_job_en_echec(
 
 
 @pytest.mark.django_db
-def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, borne, monkeypatch):
+def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, reglages, monkeypatch):
     """`trade_no` sert à interroger `printStatus` : sans lui, on ne peut plus
     savoir si le papier est sorti."""
     from impression.models import JobImpression, StatutJob
@@ -137,7 +137,7 @@ def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, borne, monkeypatch):
             return "N411_abcd1234_1700000000"
 
     monkeypatch.setattr("impression.tasks.choisir_le_backend", lambda b: BackendQuiImprime())
-    job = JobImpression.objects.create(capsule=capsule, borne=borne)
+    job = JobImpression.objects.create(capsule=capsule, reglages=reglages)
 
     assert envoyer_le_ticket(job.pk) == StatutJob.ENVOYE
     job.refresh_from_db()
@@ -145,7 +145,7 @@ def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, borne, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, borne, monkeypatch):
+def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, reglages, monkeypatch):
     """`trade_no` est notre clé d'idempotence côté Sunmi, qui déduplique dessus.
 
     Il doit donc être DÉTERMINISTE : une tâche redélivrée par Celery — un
@@ -154,7 +154,7 @@ def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, borne, mo
     l'horloge détruisait cette propriété.
 
     Et il doit rester unique d'une capsule à l'autre, y compris pour deux
-    publications de la même seconde sur la même borne.
+    publications de la même seconde sur la même reglages.
     / Deterministic so a redelivered task yields the same number, unique so two
       capsules never collide.
     """
@@ -162,11 +162,11 @@ def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, borne, mo
 
     from capsules.models import Capsule
 
-    autre = Capsule.objects.create(borne=borne, audio_original=capsule.audio_original)
+    autre = Capsule.objects.create(reglages=reglages, audio_original=capsule.audio_original)
     monkeypatch.setenv("SUNMI_APP_ID", "a")
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
 
-    backend = SunmiCloudBackend(borne)
+    backend = SunmiCloudBackend(reglages)
     with patch.object(SunmiCloudBackend, "_pilote"), \
          patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
         premier = backend.print_ticket(capsule, "https://x.example/c/1")
@@ -178,10 +178,10 @@ def test_le_numero_de_ticket_est_unique_par_capsule_et_stable(capsule, borne, mo
 
 
 @pytest.mark.django_db
-def test_le_backend_de_simulation_ne_se_dit_jamais_en_ligne(borne):
+def test_le_backend_de_simulation_ne_se_dit_jamais_en_ligne(reglages):
     """Sans identifiants Sunmi, ce backend prend la main et n'imprime rien.
     Répondre « en ligne » ferait promettre un ticket à chaque visiteur d'une
-    borne qui n'en sortira jamais."""
-    en_ligne, message = MockBackend(borne).est_en_ligne()
+    reglages qui n'en sortira jamais."""
+    en_ligne, message = MockBackend(reglages).est_en_ligne()
     assert en_ligne is False
     assert "simulée" in message

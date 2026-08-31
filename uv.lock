@@ -389,6 +389,7 @@ dependencies = [
     { name = "daphne" },
     { name = "django" },
     { name = "django-htmx" },
+    { name = "django-solo" },
     { name = "gunicorn" },
     { name = "mistralai" },
     { name = "numpy" },
@@ -418,6 +419,7 @@ requires-dist = [
     { name = "daphne", specifier = ">=4.1" },
     { name = "django", specifier = ">=6" },
     { name = "django-htmx", specifier = ">=1.27" },
+    { name = "django-solo", specifier = ">=2.5" },
     { name = "gunicorn", specifier = ">=23" },
     { name = "mistralai", specifier = ">=2.9,<3" },
     { name = "numpy", specifier = ">=2" },
@@ -592,6 +594,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/66/cc/b0619004ed73a4a2bfa50d14b00a8228407b01994df73613584523ab3056/django_htmx-1.29.0.tar.gz", hash = "sha256:337dfa35b8da13fd68bf968f2b9cc9a4144a4e71f06c204d7ff10f7343988102", size = 204340, upload-time = "2026-08-05T23:42:09.457Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ec/72/1f5f35d719b355e5c051378ae4859586f59c9db08708f02fea358376c130/django_htmx-1.29.0-py3-none-any.whl", hash = "sha256:0ec5be1645ed71e6787bd75e0250624f00274ac3bb1730f07b6629a95688929b", size = 224954, upload-time = "2026-08-05T23:42:08.142Z" },
+]
+
+[[package]]
+name = "django-solo"
+version = "2.5.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "django" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/aa/b3/1128d46ca1956dca02b7425bd5bc753c3a31ed21be6c3bb19b8d4c5316c9/django_solo-2.5.1.tar.gz", hash = "sha256:ca3b2e44dbb4726446941ca8d765c247123f709f051d07e62eacf97330ffde01", size = 13662, upload-time = "2026-01-01T15:46:52.221Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/59/aa/45058bdec53ce3df577be9bd40c630067788923284becc6cca6fc592d4db/django_solo-2.5.1-py3-none-any.whl", hash = "sha256:23bfe48950587b409ec4b4ef95e5e62c1c6c590dd958d8d8b99d37d5ccb53ca8", size = 16882, upload-time = "2026-01-01T15:46:51.087Z" },
 ]
 
 [[package]]

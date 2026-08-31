@@ -24,8 +24,8 @@ class JobImpression(models.Model):
     capsule = models.ForeignKey(
         "capsules.Capsule", on_delete=models.CASCADE, related_name="jobs_impression",
     )
-    borne = models.ForeignKey(
-        "bornes.Borne", on_delete=models.PROTECT, related_name="jobs_impression",
+    reglages = models.ForeignKey(
+        "bornes.Reglages", on_delete=models.PROTECT, related_name="jobs_impression",
     )
     statut = models.CharField(
         max_length=20, choices=StatutJob.choices,

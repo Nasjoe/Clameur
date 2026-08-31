@@ -14,7 +14,7 @@ from impression.sunmi_cloud import SunmiCloudBackend
 logger = logging.getLogger(__name__)
 
 
-def choisir_le_backend(borne):
+def choisir_le_backend(reglages):
     """Sunmi si les identifiants sont la, le mock sinon.
 
     En developpement, personne n'a d'imprimante sous la main : le mock ecrit le
@@ -22,8 +22,8 @@ def choisir_le_backend(borne):
     / Mock when no credentials: same bytes, printed to the log.
     """
     if os.environ.get("SUNMI_APP_ID") and os.environ.get("SUNMI_APP_KEY"):
-        return SunmiCloudBackend(borne)
-    return MockBackend(borne)
+        return SunmiCloudBackend(reglages)
+    return MockBackend(reglages)
 
 
 def url_de_la_capsule(capsule) -> str:
@@ -33,7 +33,7 @@ def url_de_la_capsule(capsule) -> str:
 
 @shared_task
 def envoyer_le_ticket(job_pk: int) -> str:
-    job = JobImpression.objects.select_related("capsule", "borne").get(pk=job_pk)
+    job = JobImpression.objects.select_related("capsule", "reglages").get(pk=job_pk)
 
     # CELERY REDELIVRE LES TACHES INTERROMPUES (`task_acks_late`). Sans ce
     # garde, un redemarrage au mauvais moment — un redeploiement, un worker
@@ -45,7 +45,7 @@ def envoyer_le_ticket(job_pk: int) -> str:
         logger.info("ticket %s deja envoye, on ne le rejoue pas", job.pk)
         return job.statut
 
-    backend = choisir_le_backend(job.borne)
+    backend = choisir_le_backend(job.reglages)
 
     possible, message = backend.can_print()
     if not possible:

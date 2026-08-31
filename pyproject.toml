@@ -6,6 +6,7 @@ requires-python = ">=3.13"
 dependencies = [
     "django>=6",
     "django-htmx>=1.27",
+    "django-solo>=2.5",
     "psycopg[binary]>=3.2",
     "pgvector>=0.3",
     "celery[redis]>=5.4",

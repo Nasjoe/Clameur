@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% load i18n static %}
 
-{% block titre %}{{ borne.nom }} — {% translate "Clameur" %}{% endblock %}
+{% block titre %}{{ reglages.nom }} — {% translate "Clameur" %}{% endblock %}
 
 {% block styles %}
 <style>
@@ -33,7 +33,7 @@
 
 {% block contenu %}
 <h1>{% translate "Dépose une clameur" %}</h1>
-<p class="doux">{{ borne.texte_accueil|default:_("Enregistre une idée, un souvenir. Repars avec un ticket.") }}</p>
+<p class="doux">{{ reglages.texte_accueil|default:_("Enregistre une idée, un souvenir. Repars avec un ticket.") }}</p>
 
 {% if not imprimante.en_ligne %}
   {% comment %}Prevenir AVANT de promettre un ticket : le pire echec du parcours.{% endcomment %}
@@ -43,8 +43,8 @@
   </p>
 {% endif %}
 
-{% if not borne.active %}
-  <p class="carte avis">{% translate "Cette borne est fermée pour le moment." %}</p>
+{% if not reglages.active %}
+  <p class="carte avis">{% translate "Les enregistrements sont fermés pour le moment." %}</p>
 {% else %}
 
 <section id="etape-accueil" class="etape">
@@ -91,7 +91,7 @@
   <h1>{% translate "Ton ticket sort." %}</h1>
   <p class="doux">{% translate "Prends-le, et colle-le où tu veux." %}</p>
   <p><a class="porte porte--ambre porte--large" id="lien-capsule" href="#">{% translate "Écouter ma clameur" %}</a></p>
-  <p><a class="doux" href="{% url 'capsules:accueil_borne' borne.slug %}">{% translate "Déposer une autre clameur" %}</a></p>
+  <p><a class="doux" href="{% url 'capsules:nouvelle' %}">{% translate "Déposer une autre clameur" %}</a></p>
 </section>
 
 {% endif %}
@@ -100,8 +100,8 @@
 {% block scripts %}
 <script>
   window.CLAMEUR = {
-    urlCreation: "{% url 'capsules:creer_capsule' borne.slug %}",
-    dureeMaxSecondes: {{ borne.duree_max_secondes }},
+    urlCreation: "{% url 'capsules:creer_capsule' %}",
+    dureeMaxSecondes: {{ reglages.duree_max_secondes }},
     jetonCsrf: "{{ csrf_token }}",
     textes: {
       micRefuse: "{% translate 'Sans micro, impossible d\'enregistrer.' %}",

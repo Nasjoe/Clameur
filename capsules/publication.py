@@ -111,7 +111,7 @@ def publier(capsule) -> None:
     capsule.publiee_le = timezone.now()
     capsule.save()
 
-    job = JobImpression.objects.create(capsule=capsule, borne=capsule.borne)
+    job = JobImpression.objects.create(capsule=capsule, reglages=capsule.reglages)
 
     # Redis n'est pas une dependance de la publication. S'il est mort, la
     # capsule est publiee et ecoutable, et l'operateur relance depuis la

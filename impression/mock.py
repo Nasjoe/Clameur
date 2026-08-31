@@ -60,7 +60,7 @@ class MockBackend(PrinterBackend):
     """Imprime dans les journaux. Toujours disponible."""
 
     def __init__(self, borne):
-        self.borne = borne
+        self.reglages = borne
 
     def can_print(self) -> tuple[bool, str]:
         return True, ""
@@ -77,7 +77,7 @@ class MockBackend(PrinterBackend):
         return False, "Imprimante simulée : le ticket ne sortira pas."
 
     def print_ticket(self, capsule, url_capsule: str) -> str:
-        octets = construire_le_ticket(capsule, self.borne.dots_par_ligne, url_capsule)
+        octets = construire_le_ticket(capsule, self.reglages.dots_par_ligne, url_capsule)
         cadre = ["+" + "-" * LARGEUR_CADRE + "+"]
         for ligne in decoder_escpos(octets):
             cadre.append("| " + ligne[: LARGEUR_CADRE - 2].ljust(LARGEUR_CADRE - 2) + " |")

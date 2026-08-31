@@ -24,7 +24,7 @@ from django.core.management.base import BaseCommand
 from django.utils import timezone
 from PIL import Image, ImageDraw, ImageFilter
 
-from bornes.models import Borne
+from bornes.models import Reglages
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
 
 # Huit familles de sujets. Chacune porte ses tags, ses tournures, sa teinte et
@@ -151,7 +151,6 @@ class Command(BaseCommand):
 
     def add_arguments(self, parseur):
         parseur.add_argument("--nombre", type=int, default=100)
-        parseur.add_argument("--borne", default="place-du-marche")
         parseur.add_argument(
             "--vider", action="store_true",
             help="Supprime les capsules existantes et leurs fichiers avant de créer.",
@@ -161,32 +160,22 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         alea = random.Random(options["graine"])
 
-        borne, cree = Borne.objects.get_or_create(
-            slug=options["borne"],
-            defaults={
-                "nom": "Place du marché",
-                "numero_serie_imprimante": "N411245U00000",
-                "texte_accueil": (
-                    "Ici, on dépose une idée, un souvenir, une colère. "
-                    "Deux minutes suffisent. Tu repars avec un ticket."
-                ),
-            },
-        )
-        if cree:
-            self.stdout.write(f"Borne créée : /b/{borne.slug}")
+        # `get_solo()` cree l'objet unique avec ses valeurs par defaut s'il
+        # n'existe pas encore. / get_solo() creates the single row if missing.
+        reglages = Reglages.get_solo()
 
         if options["vider"]:
             self._vider()
 
         for numero in range(options["nombre"]):
             theme = THEMES[numero % len(THEMES)]
-            self._creer_une_clameur(borne, theme, alea)
+            self._creer_une_clameur(reglages, theme, alea)
             if (numero + 1) % 20 == 0:
                 self.stdout.write(f"  {numero + 1} clameurs…")
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(
-            f"{options['nombre']} clameurs créées sur /b/{borne.slug}"
+            f"{options['nombre']} clameurs créées"
         ))
         self.stdout.write(f"  {Tag.objects.count()} tags, "
                           f"{Capsule.objects.filter(photo='').count()} sans photo")
@@ -204,12 +193,12 @@ class Command(BaseCommand):
         Tag.objects.all().delete()
         self.stdout.write(self.style.WARNING(f"{nombre} capsule(s) supprimée(s)."))
 
-    def _creer_une_clameur(self, borne, theme, alea):
+    def _creer_une_clameur(self, reglages, theme, alea):
         duree = alea.randint(14, 195)
         pseudo = alea.choice(PRENOMS) if alea.random() > 0.12 else ""
 
         capsule = Capsule(
-            borne=borne,
+            reglages=reglages,
             pseudo=pseudo,
             statut=StatutCapsule.PUBLIEE,
             duree_secondes=duree,

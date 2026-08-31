@@ -8,8 +8,8 @@ from impression.models import JobImpression, StatutJob
 
 @admin.register(JobImpression)
 class JobImpressionAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "borne", "statut", "tentatives", "creee_le")
-    list_filter = ("statut", "borne")
+    list_display = ("__str__", "statut", "tentatives", "creee_le")
+    list_filter = ("statut",)
     readonly_fields = ("trade_no", "creee_le", "tentatives")
     actions = ["relancer", "interroger_sunmi"]
 
@@ -36,7 +36,7 @@ class JobImpressionAdmin(admin.ModelAdmin):
         from impression.tasks import choisir_le_backend
 
         for job in queryset.exclude(trade_no=""):
-            backend = choisir_le_backend(job.borne)
+            backend = choisir_le_backend(job.reglages)
             if not hasattr(backend, "_pilote"):
                 self.message_user(request, _("Backend mock : rien à interroger."))
                 continue

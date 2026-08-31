@@ -35,7 +35,8 @@ def l_url_publique_est_en_https(app_configs, **kwargs):
     """Elle est imprimee dans le QR de chaque ticket.
 
     Un ticket porte une URL pour des semaines. En http, les telephones
-    refuseront le micro sur la borne et l'adresse imprimee sera fausse.
+    refuseront le micro sur la page d'enregistrement, et l'adresse imprimee
+    sera fausse.
     / A ticket carries its URL for weeks; http would refuse the microphone.
     """
     if settings.URL_PUBLIQUE.startswith("https://"):

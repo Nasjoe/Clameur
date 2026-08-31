@@ -17,8 +17,11 @@ class TagDeCapsuleInline(admin.TabularInline):
 
 @admin.register(Capsule)
 class CapsuleAdmin(admin.ModelAdmin):
-    list_display = ("__str__", "borne", "statut", "duree_secondes", "nombre_ecoutes", "enrichie_le")
-    list_filter = ("statut", "borne", "langue_detectee")
+    # Ni colonne ni filtre sur les reglages : il n'y en a qu'un jeu, la
+    # colonne serait identique sur toutes les lignes.
+    # / One settings object: the column would repeat the same value.
+    list_display = ("__str__", "statut", "duree_secondes", "nombre_ecoutes", "enrichie_le")
+    list_filter = ("statut", "langue_detectee")
     search_fields = ("pseudo", "transcription_texte")
     readonly_fields = ("uuid", "creee_le", "publiee_le", "enrichie_le", "nombre_ecoutes", "embedding")
     inlines = [TagDeCapsuleInline]
