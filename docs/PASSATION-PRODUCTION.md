@@ -56,7 +56,8 @@ directement, et une suppression est un geste conscient.
 
 **`donnees/medias/` est ce qui ne se régénère pas.** La base se reconstruit à
 partir d'un dump, les fichiers statiques se recompilent, les vecteurs se
-recalculent — les voix des gens, non. C'est le dossier à sauvegarder en premier.
+recalculent — les voix des gens, non. C'est le dossier à sauvegarder en premier,
+et c'est l'objet du §8.
 
 
 
@@ -249,7 +250,32 @@ Le mode push de Sunmi n'a **pas de rappel** : le serveur ne sait pas si le
 papier est sorti. En cas de doute, l'action « Interroger Sunmi » sur un
 `JobImpression` appelle `printStatus`.
 
-## 8. En cas de panne
+## 8. Sauvegarde
+
+Elle est en place dans [`sauvegarde/`](../sauvegarde), qui a son propre README.
+C'est le kit borgwarehouse, adapté à cette pile. Une archive quotidienne part
+sur `borgwarehouse.codecommun.coop` ; elle contient le dump PostgreSQL, les
+médias, le `.env` et le compose — **de quoi remonter le site de zéro**.
+
+```bash
+cd sauvegarde
+make check     # la dernière sauvegarde est-elle restaurable ?
+make essai     # la restaurer POUR DE VRAI, dans une base jetable
+```
+
+**`make essai` avant chaque événement.** Il restaure la dernière archive à côté
+de la base en service, compare les lignes table par table et les médias octet
+pour octet, puis efface tout. Une sauvegarde qu'on n'a jamais restaurée n'est
+pas une sauvegarde, c'est une intention.
+
+**Ce que la sauvegarde ne peut pas sauvegarder elle-même** : la passphrase du
+dépôt, sa clé exportée et son adresse. Elles vivent au coffre-fort. Sans elles,
+les archives sont un bloc chiffré définitivement illisible.
+
+Le second filet est chez borgwarehouse : il envoie un mail si le dépôt ne reçoit
+plus rien. Un cron qui échoue en silence, c'est un backup qui n'existe pas.
+
+## 9. En cas de panne
 
 | Symptôme | Où regarder |
 |---|---|
@@ -259,6 +285,7 @@ papier est sorti. En cas de doute, l'action « Interroger Sunmi » sur un
 | Aucun ticket ne sort | `SUNMI_APP_ID` / `SUNMI_APP_KEY` présents ? Sinon le backend de simulation prend la main et écrit dans les journaux. |
 | Capsules publiées mais jamais enrichies | `MISTRAL_API_KEY`, puis `docker compose logs celery` |
 | Le ciel est vide | `projeter_la_constellation` a-t-il tourné ? Une capsule sans position n'a pas d'étoile. |
+| borgwarehouse a envoyé un mail : plus de sauvegarde | `cd sauvegarde && make check`, puis `crontab -l` |
 | Une page se comporte comme une version antérieure | le volume `statiques` n'a pas été rafraîchi : vérifie que `entrypoint-prod.sh` s'exécute bien au démarrage (`docker compose logs web \| head`) |
 
 **Rien n'est perdu quand une dépendance tombe.** Les invariants garantissent

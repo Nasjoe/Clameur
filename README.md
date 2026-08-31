@@ -118,6 +118,11 @@ pgvector, Redis, ffmpeg, Mistral (Voxtral pour la transcription diarisée,
 En production : Traefik → nginx → gunicorn, avec daphne pour les WebSocket,
 le tout tenu par supervisord. Voir [`docs/PASSATION-PRODUCTION.md`](docs/PASSATION-PRODUCTION.md).
 
+La sauvegarde vit dans [`sauvegarde/`](sauvegarde) : une archive borg
+quotidienne chez borgwarehouse, qui porte le dump, les médias et la
+configuration — et `make essai`, qui la restaure pour de vrai afin de prouver
+qu'elle le peut.
+
 ## Design
 
 Le système visuel est dans `capsules/static/capsules/tokens.css`, portable tel
