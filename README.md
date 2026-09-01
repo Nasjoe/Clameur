@@ -15,7 +15,7 @@ et t'écoute.
 ## Le parcours
 
 ```
-Affiche (QR fixe)  →  /b/<borne>  ←  le téléphone du visiteur
+Affiche (QR fixe)  →  /nouvelle   ←  le téléphone du visiteur
    ↓ il parle, il se réécoute, il choisit un pseudo et deux mots-clés
    ↓ publier
    ├─→ un ticket sort de l'imprimante thermique posée à côté
@@ -38,6 +38,11 @@ cliquer une fiche illumine son étoile.
 Les positions sont **calculées une fois et stockées**. Une projection est
 globale : la recalculer à chaque visite déplacerait toutes les étoiles, et on
 ne pourrait plus revenir à une clameur repérée la veille.
+
+`make constellation` les recalcule par t-SNE — quarante lignes de numpy, aucune
+dépendance de plus — et annonce la seule mesure qui engage le ciel : la part
+des étoiles dont la voisine à l'écran est vraiment une voisine par le sens.
+Elle est de 99 % sur un corpus enrichi pour de vrai.
 
 ## Trois invariants
 
@@ -73,7 +78,7 @@ La même commande, partout : un serveur n'a pas à se souvenir d'une cible
 différente.
 
 - Constellation : http://localhost:8000/
-- Borne : http://localhost:8000/b/place-du-marche
+- Déposer une clameur : http://localhost:8000/nouvelle
 - Console : http://localhost:8000/admin/ (`make console` pour créer un compte)
 
 Sans clé Mistral, l'enrichissement échoue proprement : la capsule reste
@@ -93,7 +98,7 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make start` | lance la pile, selon `DEBUG` |
 | `make journaux` · `make arreter` | suivre, arrêter |
 | `make fixture` | recrée le corpus de démonstration |
-| `make test` | les 97 tests |
+| `make test` | les 111 tests |
 | `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
@@ -107,7 +112,7 @@ Trois applications Django.
 
 | | |
 |---|---|
-| `bornes` | La `Borne` : elle relie une affiche, une imprimante et des réglages. Le slug du QR est le seul moyen, pour le téléphone du visiteur, de désigner l'imprimante posée à côté de lui. |
+| `bornes` | Les `Réglages` du lieu, en un seul exemplaire : quelle imprimante, quel papier, quel texte d'accueil, ouvert ou fermé. |
 | `capsules` | Le cœur : modèles, capture, lecture, constellation, enrichissement, WebSocket. |
 | `impression` | Pilote Sunmi et file de tickets, isolés pour être testables sans matériel. |
 

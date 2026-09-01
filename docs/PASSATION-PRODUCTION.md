@@ -83,8 +83,8 @@ Copie `.env.example` en `.env` et renseigne :
 | `MISTRAL_API_KEY` | facultative. Sans elle, les capsules restent publiées et écoutables, simplement sans transcription. |
 | `SUNMI_APP_ID`, `SUNMI_APP_KEY` | facultatives. Sans elles, l'impression bascule sur un backend de simulation qui écrit le ticket dans les journaux. |
 
-Le **numéro de série de l'imprimante n'est pas ici** : il se saisit sur la
-`Borne` depuis la console. Ce n'est pas un secret.
+Le **numéro de série de l'imprimante n'est pas ici** : il se saisit dans les
+`Réglages` depuis la console. Ce n'est pas un secret.
 
 ## 4. Déployer
 
@@ -166,8 +166,8 @@ curl -s -i -N -H "Connection: Upgrade" -H "Upgrade: websocket" \
 ```
 
 Puis, dans un navigateur, sur **un vrai téléphone** : ouvre
-`https://<domaine>/b/<slug-de-la-borne>` et vérifie que le bouton demande
-l'accès au micro. C'est le seul test qui compte vraiment.
+`https://<domaine>/nouvelle` et vérifie que le bouton demande l'accès au
+micro. C'est le seul test qui compte vraiment.
 
 ## 6. Les pièges
 
@@ -209,16 +209,16 @@ voix.
 
 ```bash
 docker compose -f docker-compose-prod.yml exec web \
-  python manage.py tester_l_imprimante <slug-de-la-borne>
+  python manage.py tester_l_imprimante
 ```
 
 La commande vérifie la configuration, interroge l'imprimante, imprime, puis
 liste ce qu'il faut contrôler sur le papier. **Le point encore incertain est
 `dots_par_ligne`** : 576 pour du 80 mm, 384 pour du 58 mm. Le README du pilote
 d'origine annonce 384 pour du 80 mm là où ses propres tests utilisent 576. Si
-le texte est coupé sur les bords, change la valeur sur la `Borne`.
+le texte est coupé sur les bords, change la valeur dans les `Réglages`.
 
-L'affiche à imprimer, avec son QR, est sur `/b/<slug>/affiche` — réservée au
+L'affiche à imprimer, avec son QR, est sur `/affiche` — réservée au
 personnel, `Ctrl+P`, A4, marges « aucune », arrière-plans activés.
 
 **Après chaque vague d'enrichissement**, recalcule le ciel :
@@ -229,9 +229,19 @@ docker compose -f docker-compose-prod.yml exec web \
 ```
 
 Une projection est **globale** : une nouvelle clameur déplace toutes les
-autres. La commande affiche la variance expliquée ; si elle s'effondre et que
-les étoiles forment une bouillie, c'est le signal de passer de la PCA à t-SNE
-(ce qui demanderait `scikit-learn`, aujourd'hui absent volontairement).
+autres. La commande affiche ce qui compte — **la part des étoiles dont la plus
+proche voisine à l'écran est vraiment l'une de leurs clameurs les plus proches
+par le sens**. Sur cent clameurs enrichies pour de vrai, elle est de 99 %. Sous
+50 %, la commande le dit : le ciel ne tient plus dans deux dimensions.
+
+Elle projette par **t-SNE**, écrit en numpy dans la commande elle-même — pas de
+`scikit-learn`, toujours absent volontairement. La PCA occupait cette place
+jusqu'au 2026-08-31 ; mesurée sur de vrais vecteurs `mistral-embed`, elle
+plaçait la clameur dans le bon quartier mais à côté de la mauvaise voisine
+(77 % contre 99 %). **N'utilise pas la variance expliquée comme signal** : elle
+valait 18,5 % sur les fixtures, où la séparation est parfaite, et 9,7 % sur de
+vraies clameurs. Elle monte quand le problème devient facile, et c'est pour
+cela qu'elle a été retirée de l'affichage.
 
 **En fin d'événement**, purge les enregistrements jamais publiés :
 

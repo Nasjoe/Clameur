@@ -89,6 +89,20 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
     demande de n'en pas mettre. Sans ce nettoyage, `json.loads` lève et la
     capsule perd ses mots-clés sur une question de mise en forme.
     / Models often fence their JSON even when told not to.
+
+    ET IL REPOND UN OBJET, JAMAIS LE TABLEAU DEMANDE. Relevé sur une vraie
+    capsule le 2026-08-31, trois fois sur trois :
+
+        {"mots-clés": ["boulangerie", "fermeture", "nostalgie"]}
+
+    Itérer sur ce dictionnaire donne ses CLÉS. Chaque capsule recevait donc un
+    unique tag machine nommé « mots-clés » à la place de ses vrais mots-clés —
+    sans erreur, sans trace : `taguer` rendait « ok ». Le mock de la suite de
+    tests, lui, rendait sagement un tableau, et cachait le défaut.
+    On demande donc un objet, ET on accepte les deux formes : la panne était
+    silencieuse, elle mérite deux filets.
+    / The model returns an object whose keys we were iterating over; we now ask
+      for an object and accept both shapes.
     """
     from mistralai.client import Mistral
 
@@ -101,17 +115,25 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
                 "content": (
                     f"Donne exactement {NOMBRE_DE_TAGS_MACHINE} mots-clés en "
                     "français décrivant ce témoignage. Réponds uniquement par "
-                    "un tableau JSON de chaînes, sans commentaire.\n\n"
+                    'un objet JSON de la forme {"tags": ["…"]}, sans commentaire.'
+                    "\n\n"
                     f"{texte[:4000]}"
                 ),
             }
         ],
+        response_format={"type": "json_object"},
     )
     brut = (reponse.choices[0].message.content or "").strip()
     if brut.startswith("```"):
         brut = brut.split("```")[1] if "```" in brut[3:] else brut[3:]
         brut = brut.removeprefix("json").strip()
-    return [str(mot) for mot in json.loads(brut)]
+    valeur = json.loads(brut)
+    if isinstance(valeur, dict):
+        # La premiere valeur qui est une liste, quel que soit le nom de la cle :
+        # le modele l'appelle tantot « tags », tantot « mots-clés », tantot
+        # « mots_clés ». / Whatever the key is called.
+        valeur = next((v for v in valeur.values() if isinstance(v, list)), [])
+    return [str(mot) for mot in valeur]
 
 
 @shared_task

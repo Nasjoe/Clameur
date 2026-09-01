@@ -196,3 +196,64 @@ def test_le_qr_porte_un_viewbox(client, corpus_projete):
     assert 'class="segno"' in contenu
     debut = contenu.index('class="segno"') - 400
     assert "viewBox" in contenu[debut:debut + 500], "le QR ne se mettra pas à l'échelle"
+
+
+# ------------------------------------------- ce que la carte dit vraiment
+
+def _corpus_du_regime_reel(reglages, separation=0.4, groupes=6, par_groupe=8):
+    """Des vecteurs qui ressemblent à de VRAIS embeddings : des groupes nets,
+    noyés dans du bruit de haute dimension.
+
+    Mesuré le 2026-08-31 sur de vrais vecteurs `mistral-embed` : deux axes ne
+    portent que 10 % de la variance, et les thèmes n'y survivent qu'à moitié.
+    Les fixtures, elles, tirent huit gaussiennes bien séparées — la PCA y
+    réussit toujours, et ce cas facile ne prouve donc rien.
+    / Real embeddings put ~10 % of the variance on two axes; the fixtures'
+      well-separated gaussians are an easy case that proves nothing.
+    """
+    import numpy as np
+
+    alea = np.random.default_rng(7)
+    centres = alea.normal(0, 1, (groupes, 1024))
+    capsules, groupe_de = [], {}
+    for numero in range(groupes):
+        for _ in range(par_groupe):
+            vecteur = centres[numero] * separation + alea.normal(0, 1, 1024)
+            capsule = Capsule.objects.create(
+                reglages=reglages,
+                statut=StatutCapsule.PUBLIEE,
+                duree_secondes=30,
+                embedding=(vecteur / np.linalg.norm(vecteur)).tolist(),
+            )
+            capsules.append(capsule)
+            groupe_de[capsule.uuid] = numero
+    return capsules, groupe_de
+
+
+def test_deux_clameurs_voisines_a_l_ecran_parlent_bien_de_la_meme_chose(reglages):
+    """LA QUESTION QUE POSE LE CIEL. Une étoile voisine doit être une clameur
+    voisine — sinon la carte est décorative, et le double écran ment.
+
+    Sur ce régime, la PCA plafonnait à 79 % : elle place « dans le bon
+    quartier » sans placer le bon voisin.
+    / The sky's whole claim: a neighbouring star must be a neighbouring clameur.
+    """
+    import numpy as np
+
+    capsules, groupe_de = _corpus_du_regime_reel(reglages)
+    call_command("projeter_la_constellation", verbosity=0)
+
+    positions, groupes = [], []
+    for capsule in Capsule.objects.filter(uuid__in=[c.uuid for c in capsules]):
+        positions.append((capsule.position_x, capsule.position_y))
+        groupes.append(groupe_de[capsule.uuid])
+    positions, groupes = np.asarray(positions), np.asarray(groupes)
+
+    distances = ((positions[:, None, :] - positions[None, :, :]) ** 2).sum(-1)
+    np.fill_diagonal(distances, np.inf)
+    accord = (groupes[distances.argmin(1)] == groupes).mean()
+
+    assert accord >= 0.95, (
+        f"seulement {accord:.0%} des étoiles ont pour plus proche voisine une "
+        "clameur du même groupe : la carte ne dit pas grand-chose"
+    )

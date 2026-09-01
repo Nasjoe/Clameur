@@ -45,7 +45,7 @@ aide:  ## Affiche cette aide
 	@printf "\n  $(BRUN)Premiers pas$(FIN)\n"
 	@printf "    cp .env.example .env  puis  make fixture\n"
 	@printf "    Constellation  http://localhost:8000/\n"
-	@printf "    Borne          http://localhost:8000/b/place-du-marche\n"
+	@printf "    Déposer        http://localhost:8000/nouvelle\n"
 	@printf "    Console        http://localhost:8000/admin/\n\n"
 	@printf "  $(BRUN)Bon à savoir$(FIN)\n"
 	@printf "    Sans clé Mistral, les capsules restent publiées et écoutables,\n"
@@ -70,14 +70,14 @@ endif
 demarrer-en-developpement: services
 	@$(DANS_WEB) migrate
 	@if [ "$$($(COMPOSE) run --rm -T web python -c \
-	     'import django,os;os.environ.setdefault("DJANGO_SETTINGS_MODULE","clameur.settings");django.setup();from bornes.models import Borne;print(Borne.objects.count())' \
+	     'import django,os;os.environ.setdefault("DJANGO_SETTINGS_MODULE","clameur.settings");django.setup();from capsules.models import Capsule;print(Capsule.objects.count())' \
 	     2>/dev/null | tr -dc 0-9)" = "0" ]; then \
 		printf "  Base vide : création du corpus de démonstration.\n\n"; \
-		$(DANS_WEB) creer_des_clameurs --nombre 100 --vider; \
+		$(DANS_WEB) creer_des_clameurs --nombre 100 --vider --avec-mistral; \
 		$(DANS_WEB) projeter_la_constellation; \
 	fi
 	@printf "\n  Constellation : http://localhost:8000/\n"
-	@printf "  Borne         : http://localhost:8000/b/place-du-marche\n"
+	@printf "  Déposer       : http://localhost:8000/nouvelle\n"
 	@printf "  Console       : http://localhost:8000/admin/\n\n"
 	DEBUG=true $(COMPOSE) up web celery
 
@@ -116,11 +116,11 @@ migrations:  ## Génère les migrations (écrit sur ton disque, d'où --user)
 	$(COMME_MOI) web python manage.py makemigrations
 
 fixture: migrate  ## Crée 100 clameurs de démonstration, puis lance le serveur
-	$(DANS_WEB) creer_des_clameurs --nombre 100 --vider
+	$(DANS_WEB) creer_des_clameurs --nombre 100 --vider --avec-mistral
 	$(DANS_WEB) projeter_la_constellation
 	@printf "\n  Constellation : http://localhost:8000/\n"
-	@printf "  Borne         : http://localhost:8000/b/place-du-marche\n"
-	@printf "  Affiche       : http://localhost:8000/b/place-du-marche/affiche  (staff)\n"
+	@printf "  Déposer       : http://localhost:8000/nouvelle\n"
+	@printf "  Affiche       : http://localhost:8000/affiche  (staff)\n"
 	@printf "  Console       : http://localhost:8000/admin/\n\n"
 	$(MAKE) run
 
@@ -143,7 +143,7 @@ console:  ## Crée un compte opérateur pour /admin/
 	$(DANS_WEB) createsuperuser
 
 imprimante:  ## Imprime un ticket de test sur la vraie Sunmi
-	$(DANS_WEB) tester_l_imprimante place-du-marche
+	$(DANS_WEB) tester_l_imprimante
 
 purge:  ## Supprime les enregistrements jamais publiés (annonce seulement)
 	$(DANS_WEB) purger_les_brouillons

@@ -174,3 +174,55 @@ def test_un_vecteur_conforme_est_enregistre(capsule_a_transcrire):
     capsule_a_transcrire.refresh_from_db()
     assert capsule_a_transcrire.embedding is not None
     assert capsule_a_transcrire.enrichie_le is not None
+
+
+# ------------------------------------------- la forme reelle de la reponse
+
+def _client_qui_repond(contenu: str):
+    """Un client Mistral factice qui rend exactement ce qu'a rendu le vrai.
+    / A fake client returning verbatim what the real one returned."""
+    from unittest.mock import MagicMock
+
+    client = MagicMock()
+    client.chat.complete.return_value.choices = [
+        MagicMock(message=MagicMock(content=contenu))
+    ]
+    return lambda **_: client
+
+
+def test_les_mots_cles_survivent_a_une_reponse_en_objet_json():
+    """`mistral-small` répond un OBJET, jamais le tableau qu'on lui demande.
+
+    Relevé le 2026-08-31 sur une vraie capsule, trois fois sur trois :
+
+        ```json
+        {"mots-clés": ["boulangerie", "fermeture", "nostalgie"]}
+        ```
+
+    Itérer sur ce dictionnaire donne ses CLÉS. Chaque capsule recevait donc un
+    unique tag machine nommé « mots-clés », et ses vrais mots-clés étaient
+    perdus — sans erreur, sans trace, sans que rien ne le signale.
+    / The model returns an object, never the requested array; iterating it
+      yields the keys, so every capsule got a single tag named "mots-clés".
+    """
+    from capsules.tasks import _appeler_le_modele_de_tags
+
+    with patch(
+        "mistralai.client.Mistral",
+        _client_qui_repond(
+            '```json\n{"mots-clés": ["boulangerie", "fermeture", "nostalgie"]}\n```'
+        ),
+    ):
+        assert _appeler_le_modele_de_tags("peu importe") == [
+            "boulangerie", "fermeture", "nostalgie",
+        ]
+
+
+def test_les_mots_cles_acceptent_aussi_le_tableau_nu():
+    """L'autre forme reste valable : le jour où le modèle obéit, rien ne casse.
+    / The obedient form must keep working."""
+    from capsules.tasks import _appeler_le_modele_de_tags
+
+    with patch("mistralai.client.Mistral",
+               _client_qui_repond('["rue", "pluie", "marché"]')):
+        assert _appeler_le_modele_de_tags("peu importe") == ["rue", "pluie", "marché"]

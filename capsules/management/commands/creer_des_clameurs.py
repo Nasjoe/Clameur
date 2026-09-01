@@ -12,13 +12,17 @@ Une projection correcte doit donc faire apparaître des amas nets.
 whether a projection actually works.
 """
 
+import base64
 import io
+import logging
 import math
+import os
 import random
 import subprocess
 import tempfile
 from pathlib import Path
 
+from django.conf import settings
 from django.core.files import File
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -26,6 +30,75 @@ from PIL import Image, ImageDraw, ImageFilter
 
 from bornes.models import Reglages
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
+
+logger = logging.getLogger(__name__)
+
+# Combien de clameurs sont REELLEMENT PARLEES sous `--avec-mistral`. Six
+# suffisent a entendre le corpus et a voir une transcription a deux voix ;
+# cent coûteraient une minute d'attente et autant d'appels a la synthese.
+# / Six spoken capsules are enough to hear the corpus without paying for a hundred.
+CAPSULES_PARLEES = 6
+
+MODELE_TTS = "voxtral-mini-tts-latest"
+TAILLE_DU_LOT = 32
+SILENCE_ENTRE_REPLIQUES = 0.4
+
+# LE CATALOGUE MISTRAL N'A QU'UNE VOIX FRANCAISE — `marie`, en six emotions.
+# Un dialogue demande DEUX TIMBRES : sans quoi la diarisation n'a rien a
+# separer. On emprunte donc une voix anglaise, qui lit le francais avec un
+# accent. Verifie le 2026-08-31 : Voxtral la transcrit sans faute et la
+# distingue nettement de marie. Un accent dans la rue n'est pas une anomalie.
+# / Mistral ships a single French voice; a dialogue needs two timbres, so we
+#   borrow an English one. Voxtral transcribes and separates it perfectly.
+VOIX = {
+    "posee": "5a271406-039d-46fe-835b-fbbb00eaf08d",   # fr_marie_neutral
+    "en colere": "a7c07cdc-1c35-4d87-a938-c610a654f600",  # fr_marie_angry
+    "emue": "4adeb2c6-25a3-44bc-8100-5234dfc1193b",    # fr_marie_sad
+    "autre timbre": "e3596645-b1af-469e-b857-f18ddedc7652",  # gb_oliver_neutral
+}
+
+
+def _vecteurs_du_modele(textes: list[str]) -> list[list[float]] | None:
+    """Les vrais vecteurs de `mistral-embed`, ou None s'il faut s'en passer.
+
+    NE LEVE JAMAIS. Une clef absente, un reseau coupe, une API en panne : le
+    corpus doit se fabriquer quand meme, avec ses vecteurs synthetiques. C'est
+    la promesse du README — `make fixture` marche sans clef.
+    / Never raises: the README promises fixtures work with no key at all.
+    """
+    if not os.environ.get("MISTRAL_API_KEY"):
+        return None
+    try:
+        from mistralai.client import Mistral
+
+        client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
+        vecteurs: list[list[float]] = []
+        for debut in range(0, len(textes), TAILLE_DU_LOT):
+            reponse = client.embeddings.create(
+                model=settings.MISTRAL_MODELE_EMBEDDING,
+                inputs=textes[debut:debut + TAILLE_DU_LOT],
+            )
+            vecteurs.extend(donnee.embedding for donnee in reponse.data)
+        return vecteurs
+    except Exception:
+        logger.exception("embeddings reels indisponibles, repli sur le synthetique")
+        return None
+
+
+def _synthetiser_une_replique(texte: str, voix: str, dossier: str, index: int) -> Path:
+    """Fait dire une phrase par une voix, et rend le wav produit.
+    / Has one voice say one line, and returns the wav it produced."""
+    from mistralai.client import Mistral
+
+    client = Mistral(api_key=os.environ["MISTRAL_API_KEY"])
+    reponse = client.audio.speech.complete(
+        model=MODELE_TTS, input=texte, voice_id=voix, response_format="wav",
+    )
+    chemin = Path(dossier) / f"{index:02d}.wav"
+    # L'API rend du base64, jamais des octets : `write_bytes` sur la chaine
+    # brute leve un TypeError. / The API returns base64, never raw bytes.
+    chemin.write_bytes(base64.b64decode(reponse.audio_data))
+    return chemin
 
 # Huit familles de sujets. Chacune porte ses tags, ses tournures, sa teinte et
 # sa note — de quoi rendre le corpus lisible à l'œil comme à l'oreille.
@@ -156,9 +229,18 @@ class Command(BaseCommand):
             help="Supprime les capsules existantes et leurs fichiers avant de créer.",
         )
         parseur.add_argument("--graine", type=int, default=1789)
+        parseur.add_argument(
+            "--avec-mistral", action="store_true",
+            help=(
+                "Appelle vraiment l'API : vecteurs de mistral-embed et "
+                f"{CAPSULES_PARLEES} clameurs parlées par la synthèse vocale. "
+                "Sans clé, le corpus se fabrique quand même, en synthétique."
+            ),
+        )
 
     def handle(self, *args, **options):
         alea = random.Random(options["graine"])
+        self._creees = []
 
         # `get_solo()` cree l'objet unique avec ses valeurs par defaut s'il
         # n'existe pas encore. / get_solo() creates the single row if missing.
@@ -169,9 +251,15 @@ class Command(BaseCommand):
 
         for numero in range(options["nombre"]):
             theme = THEMES[numero % len(THEMES)]
-            self._creer_une_clameur(reglages, theme, alea)
+            self._creer_une_clameur(
+                reglages, theme, alea,
+                parlee=options["avec_mistral"] and numero < CAPSULES_PARLEES,
+            )
             if (numero + 1) % 20 == 0:
                 self.stdout.write(f"  {numero + 1} clameurs…")
+
+        if options["avec_mistral"]:
+            self._embarquer_pour_de_vrai()
 
         self.stdout.write("")
         self.stdout.write(self.style.SUCCESS(
@@ -193,7 +281,7 @@ class Command(BaseCommand):
         Tag.objects.all().delete()
         self.stdout.write(self.style.WARNING(f"{nombre} capsule(s) supprimée(s)."))
 
-    def _creer_une_clameur(self, reglages, theme, alea):
+    def _creer_une_clameur(self, reglages, theme, alea, parlee=False):
         duree = alea.randint(14, 195)
         pseudo = alea.choice(PRENOMS) if alea.random() > 0.12 else ""
 
@@ -206,7 +294,17 @@ class Command(BaseCommand):
             nombre_ecoutes=max(0, int(alea.gauss(6, 9))),
         )
 
-        audio = self._fabriquer_l_audio(theme["note"], duree, alea)
+        voix = self._fabriquer_une_voix(theme, alea) if parlee else None
+        if voix:
+            audio, segments_parles, duree = voix
+            # LA DUREE EST CELLE DU FICHIER, PAS UN TIRAGE AU SORT. Une fiche
+            # qui annonce trois minutes pour trente secondes de voix ment au
+            # passant, et le lecteur affiche aussitot le desaccord.
+            # / The duration is the file's own, not a random draw.
+            capsule.duree_secondes = duree
+        else:
+            audio = self._fabriquer_l_audio(theme["note"], duree, alea)
+            segments_parles = None
         # audio_original en m4a : c'est exactement ce qu'envoie un iPhone, et
         # cela évite une conversion inutile pour des fixtures.
         # / m4a original: that is what an iPhone sends anyway.
@@ -220,12 +318,19 @@ class Command(BaseCommand):
                 save=False,
             )
 
-        segments, texte = self._fabriquer_la_transcription(theme, duree, alea)
-        capsule.transcription_raw = {"segments": segments}
+        if segments_parles:
+            segments = segments_parles
+            texte = " ".join(segment["text"] for segment in segments)
+        else:
+            segments, texte = self._fabriquer_la_transcription(theme, duree, alea)
+        # `parlee` marque les clameurs dont l'audio DIT vraiment le texte : on
+        # peut les ecouter en lisant. / Marks capsules whose audio says the text.
+        capsule.transcription_raw = {"segments": segments, "parlee": bool(segments_parles)}
         capsule.transcription_texte = texte
         capsule.embedding = self._fabriquer_le_vecteur(theme, alea)
         capsule.enrichie_le = timezone.now()
         capsule.save()
+        self._creees.append(capsule)
 
         Capsule.objects.filter(pk=capsule.pk).update(
             creee_le=timezone.now() - timezone.timedelta(
@@ -239,6 +344,101 @@ class Command(BaseCommand):
             TagDeCapsule.objects.get_or_create(
                 capsule=capsule, tag=tag, origine=TagDeCapsule.AUTEUR
             )
+
+    def _embarquer_pour_de_vrai(self):
+        """Remplace les vecteurs synthetiques par ceux de `mistral-embed`.
+
+        EN UN SEUL PASSAGE, APRES COUP. Appeler l'API capsule par capsule
+        ferait cent allers-retours la ou quatre suffisent ; et le faire apres
+        garde la fabrication du corpus entierement hors ligne tant que l'API
+        ne repond pas. / One pass, afterwards: four round trips instead of a
+        hundred, and the corpus is built offline until the API answers.
+        """
+        vecteurs = _vecteurs_du_modele(
+            [capsule.transcription_texte for capsule in self._creees]
+        )
+        if vecteurs is None:
+            self.stdout.write(self.style.WARNING(
+                "  Mistral injoignable : vecteurs synthétiques conservés."
+            ))
+            return
+
+        for capsule, vecteur in zip(self._creees, vecteurs):
+            capsule.embedding = vecteur
+        Capsule.objects.bulk_update(self._creees, ["embedding"], batch_size=200)
+        self.stdout.write(f"  {len(vecteurs)} vecteurs réels de mistral-embed.")
+
+    def _fabriquer_une_voix(self, theme, alea):
+        """Fait dire ses phrases au thème, et rend (audio m4a, segments, durée).
+
+        Les segments portent les timings REELS, mesures sur les fichiers
+        produits : on assemble soi-meme, donc on sait exactement quand chaque
+        replique commence. Inutile de payer une transcription pour l'apprendre.
+        / We assemble the audio ourselves, so the timings are known exactly.
+
+        Rend None si la synthese echoue : une fixture ne doit jamais faire
+        echouer `make fixture`. / Returns None on failure; fixtures never break.
+        """
+        phrases = alea.sample(theme["phrases"], min(len(theme["phrases"]), 3))
+        # Une fois sur deux, deux timbres qui se repondent : c'est ce que la
+        # diarisation doit savoir separer, et ce que la page doit savoir
+        # colorer. / Half the time, two timbres answering each other.
+        if alea.random() > 0.5:
+            timbres = [VOIX["posee"], VOIX["autre timbre"]]
+        else:
+            timbres = [VOIX[alea.choice(["posee", "en colere", "emue"])]]
+
+        try:
+            with tempfile.TemporaryDirectory() as dossier:
+                morceaux, segments, debut = [], [], 0.0
+                for index, phrase in enumerate(phrases):
+                    timbre = timbres[index % len(timbres)]
+                    chemin = _synthetiser_une_replique(phrase, timbre, dossier, index)
+                    longueur = self._duree_du_fichier(chemin)
+                    morceaux.append(chemin)
+                    segments.append({
+                        "speaker": f"speaker_{index % len(timbres) + 1}",
+                        "start": round(debut, 2),
+                        "end": round(debut + longueur, 2),
+                        "text": phrase,
+                    })
+                    debut += longueur + SILENCE_ENTRE_REPLIQUES
+
+                audio = self._assembler(morceaux, dossier)
+                return audio, segments, max(1, round(debut))
+        except Exception:
+            logger.exception("synthèse vocale impossible, repli sur le bip")
+            return None
+
+    def _assembler(self, morceaux, dossier):
+        """Colle les repliques bout a bout, separees d'un souffle, en m4a.
+        / Joins the lines with a breath between them."""
+        silence = Path(dossier) / "silence.wav"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+             "-t", str(SILENCE_ENTRE_REPLIQUES), str(silence)],
+            check=True, capture_output=True, timeout=60,
+        )
+        liste = Path(dossier) / "liste.txt"
+        liste.write_text(
+            "".join(f"file '{m}'\nfile '{silence}'\n" for m in morceaux)
+        )
+        sortie = Path(dossier) / "voix.m4a"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", str(liste),
+             "-c:a", "aac", "-b:a", "64k", "-ac", "1",
+             "-movflags", "+faststart", str(sortie)],
+            check=True, capture_output=True, timeout=120,
+        )
+        return io.BytesIO(sortie.read_bytes())
+
+    def _duree_du_fichier(self, chemin) -> float:
+        mesure = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", str(chemin)],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        return float(mesure.stdout.strip())
 
     def _fabriquer_l_audio(self, note, duree, alea):
         """Un son court et audible, propre à chaque thème.

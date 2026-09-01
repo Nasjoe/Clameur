@@ -102,3 +102,104 @@ def test_vider_supprime_aussi_les_fichiers(petit_corpus):
 
     assert not any(Path(chemin).exists() for chemin in chemins), "fichiers orphelins"
     assert Capsule.objects.count() == 2
+
+
+# ------------------------------------------------ le corpus « pour de vrai »
+
+"""Les fixtures savent parler et penser comme le vrai service — sur demande.
+
+`--avec-mistral` N'EST PAS ACTIF PAR DEFAUT, ET C'EST LE POINT. La suite de
+tests tourne dans le conteneur, où `MISTRAL_API_KEY` est présente : si la
+commande appelait l'API dès qu'elle voit une clé, chaque `make test`
+partirait sur le réseau et sur la note de frais.
+/ Never on by default: the test container has a key, and the suite must stay
+  offline and free.
+"""
+
+
+@pytest.mark.django_db
+def test_avec_mistral_les_vecteurs_viennent_du_modele():
+    from unittest.mock import patch
+
+    from capsules.management.commands.creer_des_clameurs import Command
+
+    faux = [[0.5] * 1024, [0.25] * 1024, [0.125] * 1024, [0.0625] * 1024]
+
+    # `_fabriquer_une_voix` est neutralisee : ce test parle des vecteurs, et
+    # sans cela il partirait sur le reseau pour synthetiser quatre capsules.
+    # / Voice generation is stubbed: this test is about vectors, not audio.
+    with patch(
+        "capsules.management.commands.creer_des_clameurs._vecteurs_du_modele",
+        return_value=faux,
+    ), patch.object(Command, "_fabriquer_une_voix", return_value=None):
+        call_command("creer_des_clameurs", nombre=4, vider=True,
+                     avec_mistral=True, verbosity=0)
+
+    vecteurs = {tuple(c.embedding) for c in Capsule.objects.all()}
+    assert vecteurs == {tuple(v) for v in faux}, (
+        "les vecteurs du modèle n'ont pas été écrits en base"
+    )
+
+
+@pytest.mark.django_db
+def test_sans_cle_le_corpus_se_fabrique_quand_meme(monkeypatch):
+    """`make fixture` doit marcher sans clé : c'est la promesse du README.
+    / The README promises fixtures work with no key at all."""
+    monkeypatch.delenv("MISTRAL_API_KEY", raising=False)
+
+    call_command("creer_des_clameurs", nombre=4, vider=True,
+                 avec_mistral=True, verbosity=0)
+
+    assert Capsule.objects.count() == 4
+    for capsule in Capsule.objects.all():
+        assert capsule.embedding is not None
+        assert len(capsule.embedding) == 1024
+        assert capsule.audio_diffusion
+
+
+@pytest.mark.django_db
+def test_une_clameur_parlee_dure_ce_que_dure_son_audio():
+    """Sur une capsule parlée, la durée affichée est celle du fichier, pas un
+    tirage au sort : la fiche ne doit pas annoncer trois minutes pour trente
+    secondes de voix. / A spoken capsule's duration is the file's own."""
+    from unittest.mock import patch
+
+    from capsules.management.commands.creer_des_clameurs import CAPSULES_PARLEES
+
+    def fausse_replique(texte, voix, dossier, index):
+        import subprocess
+        from pathlib import Path
+
+        chemin = Path(dossier) / f"{index}.wav"
+        subprocess.run(
+            ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+             "-t", "3", str(chemin)],
+            check=True, capture_output=True,
+        )
+        return chemin
+
+    with patch(
+        "capsules.management.commands.creer_des_clameurs._synthetiser_une_replique",
+        side_effect=fausse_replique,
+    ), patch(
+        "capsules.management.commands.creer_des_clameurs._vecteurs_du_modele",
+        return_value=None,
+    ):
+        call_command("creer_des_clameurs", nombre=8, vider=True,
+                     avec_mistral=True, verbosity=0)
+
+    parlees = [c for c in Capsule.objects.all() if c.transcription_raw.get("parlee")]
+    assert len(parlees) == CAPSULES_PARLEES
+
+    import subprocess
+
+    for capsule in parlees:
+        mesure = subprocess.run(
+            ["ffprobe", "-v", "error", "-show_entries", "format=duration",
+             "-of", "default=nw=1:nk=1", capsule.audio_diffusion.path],
+            check=True, capture_output=True, text=True,
+        )
+        assert abs(capsule.duree_secondes - float(mesure.stdout)) <= 1, (
+            f"{capsule.uuid} annonce {capsule.duree_secondes} s "
+            f"pour {mesure.stdout.strip()} s d'audio"
+        )
