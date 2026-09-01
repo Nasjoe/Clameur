@@ -1,0 +1,15 @@
+# Clameur ne veut pas etre indexe.
+#
+# Une clameur est deposee pour un mur, pas pour un moteur de recherche. Les
+# UUID ne sont pas enumerables, mais la page d'accueil les liste toutes : un
+# robot qui l'explore trouverait le corpus entier.
+#
+# Les agents ci-dessous font exception, et ce ne sont pas des moteurs : ils
+# chargent une page une fois pour en tirer un titre et une image, quand
+# quelqu'un partage un lien. Sans eux, une clameur envoyee a un ami arrive
+# nue dans la conversation.
+{% for agent in depiauteurs %}User-agent: {{ agent }}
+{% endfor %}Allow: /
+
+User-agent: *
+Disallow: /

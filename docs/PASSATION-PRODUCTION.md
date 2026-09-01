@@ -188,6 +188,19 @@ page est jugée non sécurisée, donc **micro refusé**. C'est réglé dans
 ignoré** : les journaux montrent la diffusion, mais rien n'arrive aux
 navigateurs. Redémarre daphne, ou le conteneur `web`.
 
+**Les deux fichiers Compose portent des noms de projet différents**, et c'est
+un garde-fou. Sans `name:` en tête, Compose déduit le nom du dossier : les deux
+fichiers en réclamaient le même, et **`make test` lancé sur le serveur recréait
+les conteneurs `db` et `redis` de production avec la définition de
+développement** — un volume nommé vide à la place du bind mount, et le site en
+erreur 500. Les données restaient sur le disque, mais plus personne ne les
+servait. Ne retire jamais ces deux lignes `name:`.
+
+**`donnees/` est exclu du contexte de build** (`.dockerignore`). Sans cette
+ligne, `docker compose build` **échoue** : les fichiers de PostgreSQL
+appartiennent à l'utilisateur du conteneur, en 0700, et le démon ne peut pas
+les lire pour constituer le contexte.
+
 **Un `build` seul ne suffit pas.** Les conteneurs déjà lancés continuent de
 tourner sur l'ancienne image. Il faut `up -d --force-recreate web`.
 

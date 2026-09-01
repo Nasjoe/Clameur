@@ -1,0 +1,15 @@
+<!--
+  LA PORTE, le composant signature du projet : une ombre dure et decalee dans
+  laquelle l'objet s'enfonce. C'est la seule forme de Clameur qui tienne a
+  16 px — un mot, une lettre ou une etoile s'y perdraient.
+  / The signature component: the only shape of this project legible at 16px.
+
+  Les couleurs sont celles de tokens.css (--color-braise, --color-paper),
+  converties d'oklch en sRGB. Un SVG ne sait pas lire une variable CSS.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img"
+     aria-label="Clameur">
+  <rect x="8.98" y="8.98" width="18.56" height="18.56" rx="2.97" fill="#f6825f"/>
+  <rect x="4.1" y="4.1" width="16.16" height="16.16" rx="2.4"
+        fill="#1c110c" stroke="#f6825f" stroke-width="2.4"/>
+</svg>

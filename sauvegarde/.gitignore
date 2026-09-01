@@ -1,0 +1,8 @@
+# Le .env porte la passphrase du depot : il ne part JAMAIS sur la forge.
+.env
+# La cle privee du depot. Elle vit ici et au coffre, nulle part ailleurs.
+.ssh/
+# Le dump n'existe que le temps d'une sauvegarde — mais un script interrompu
+# peut en laisser un derriere lui, et il contient toute la base en clair.
+dump-*/
+*.lock

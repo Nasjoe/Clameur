@@ -6,6 +6,56 @@
   <title>{% block titre %}{% translate "Clameur" %}{% endblock %}</title>
 
   {% comment %}
+    L'ICONE. Le SVG pour les navigateurs modernes, le PNG pour les autres,
+    l'icone iOS pour un ecran d'accueil — la borne s'ouvre sur un telephone,
+    et rien n'empeche un visiteur d'y epingler la page.
+    / SVG for modern browsers, PNG for the rest, iOS icon for the home screen.
+  {% endcomment %}
+  <link rel="icon" href="{% static 'capsules/marque/favicon.svg' %}" type="image/svg+xml">
+  <link rel="icon" href="{% static 'capsules/marque/icone-32.png' %}" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="{% static 'capsules/marque/icone-180.png' %}">
+  {# La couleur du papier, pour que la barre du navigateur ne jure pas. #}
+  <meta name="theme-color" content="#1c110c">
+
+  {% comment %}
+    NE PAS INDEXER. Une clameur est deposee pour un mur, pas pour un moteur de
+    recherche. Le robots.txt le dit aux robots qui le lisent AVANT de charger
+    la page ; cette balise le dit a ceux qui la chargent quand meme. Les deux
+    sont necessaires : un `Disallow` empeche de parcourir, pas d'indexer une
+    adresse trouvee ailleurs.
+    / robots.txt stops the crawl, this tag stops the indexing of a URL found
+      elsewhere. Neither one alone is enough.
+  {% endcomment %}
+  <meta name="robots" content="noindex, nofollow">
+
+  {% comment %}
+    LE PARTAGE. Un ticket scanne se renvoie ensuite de main en main : le lien
+    d'une clameur finit dans une conversation. Sans ces balises il y arrive nu
+    — une adresse sans titre ni image, que personne n'ouvre.
+    On n'y met JAMAIS la parole enregistree : pseudo, mots-cles et duree,
+    exactement ce que dit le ticket papier. Un extrait de transcription
+    recopierait la voix de quelqu'un dans des historiques de conversation
+    qu'il n'a pas choisis.
+    Il n'y a pas de `<meta name="description">` : elle ne sert qu'aux moteurs,
+    et nous leur demandons de passer leur chemin.
+    / Never the recorded speech: pseudonym, tags and duration, exactly what
+      the paper ticket says.
+  {% endcomment %}
+  <meta property="og:site_name" content="Clameur">
+  <meta property="og:type" content="website">
+  <meta property="og:locale" content="fr_FR">
+  <meta property="og:url" content="{{ url_publique }}{{ request.path }}">
+  <meta property="og:title" content="{% block og_titre %}{% translate "Clameur" %}{% endblock %}">
+  <meta property="og:description" content="{% block og_description %}{% translate "Enregistre une capsule sonore, repars avec un ticket, colle-le où tu veux." %}{% endblock %}">
+  {% block og_image %}
+  <meta property="og:image" content="{{ url_publique }}{% static 'capsules/marque/partage-defaut.png' %}">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:image:alt" content="{% translate "Clameur — une capsule sonore, un ticket, un mur." %}">
+  {% endblock %}
+  <meta name="twitter:card" content="summary_large_image">
+
+  {% comment %}
     Les deux fichiers `latin` sont precharges : ce sont eux qui portent le
     francais courant, et sans preload le navigateur ne les decouvre qu'apres
     avoir lu, telecharge et analyse la feuille de styles.
