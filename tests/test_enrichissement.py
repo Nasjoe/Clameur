@@ -178,6 +178,18 @@ def test_un_vecteur_conforme_est_enregistre(capsule_a_transcrire):
 
 # ------------------------------------------- la forme reelle de la reponse
 
+@pytest.fixture(autouse=True)
+def cle_factice(monkeypatch):
+    """`_appeler_le_modele_de_tags` lit `os.environ["MISTRAL_API_KEY"]` sans
+    filet. Les tests ci-dessous ne tenaient que parce que le `.env` du
+    conteneur porte la ligne, même vide : le jour où elle disparaît, ils
+    lèveraient un KeyError sans rapport avec ce qu'ils vérifient. La spec veut
+    un projet testable sans clé.
+    / The tests only held because the container's .env carries the line.
+    """
+    monkeypatch.setenv("MISTRAL_API_KEY", "clé-factice-jamais-appelée")
+
+
 def _client_qui_repond(contenu: str):
     """Un client Mistral factice qui rend exactement ce qu'a rendu le vrai.
     / A fake client returning verbatim what the real one returned."""
@@ -226,3 +238,107 @@ def test_les_mots_cles_acceptent_aussi_le_tableau_nu():
     with patch("mistralai.client.Mistral",
                _client_qui_repond('["rue", "pluie", "marché"]')):
         assert _appeler_le_modele_de_tags("peu importe") == ["rue", "pluie", "marché"]
+
+
+def test_une_reponse_sans_aucune_liste_est_un_echec_visible():
+    """Le modèle a répondu quelque chose, mais rien qui ressemble à des tags.
+
+    Rendre une liste vide ferait dire « ok » à la tâche et laisserait la
+    capsule sans mots-clés, sans erreur, sans trace — exactement la panne
+    silencieuse qu'on vient de corriger. Mieux vaut un échec inscrit dans
+    `erreur_enrichissement`, que l'opérateur voit et peut rejouer.
+    / An empty list would report success and lose the keywords in silence.
+    """
+    from capsules.tasks import _appeler_le_modele_de_tags
+
+    with patch("mistralai.client.Mistral",
+               _client_qui_repond('{"resultat": "je ne sais pas"}')), \
+         pytest.raises(ValueError):
+        _appeler_le_modele_de_tags("peu importe")
+
+
+def test_on_demande_au_modele_un_objet_json():
+    """L'autre moitié du correctif : on ne se contente pas de tolérer l'objet,
+    on le demande. Sans `response_format`, le modèle retombe sur ses habitudes
+    et sur ses balises de code, et le nettoyage redevient la seule défense.
+    / We don't merely tolerate the object shape, we ask for it.
+    """
+    from capsules.tasks import _appeler_le_modele_de_tags
+
+    fabrique = _client_qui_repond('{"tags": ["rue", "pluie", "marché"]}')
+    client = fabrique()
+    with patch("mistralai.client.Mistral", lambda **_: client):
+        _appeler_le_modele_de_tags("peu importe")
+
+    appel = client.chat.complete.call_args.kwargs
+    assert appel["response_format"] == {"type": "json_object"}
+
+
+# ------------------------------- l'erreur s'efface quand l'etape reussit
+
+@pytest.mark.django_db
+def test_un_tagage_reussi_efface_l_erreur_de_tagage(capsule_a_transcrire):
+    """Une erreur périmée reste affichée en console tant que rien ne l'efface.
+
+    L'opérateur rejoue l'étape, elle réussit, et la capsule continue d'annoncer
+    un échec : il ne peut plus distinguer ce qui est réparé de ce qui ne l'est
+    pas. / A stale error keeps a repaired capsule looking broken.
+    """
+    capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
+    capsule_a_transcrire.erreur_enrichissement = "Extraction des tags : JSON illisible"
+    capsule_a_transcrire.save()
+
+    with patch("capsules.tasks._appeler_le_modele_de_tags", return_value=["rue"]):
+        assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
+
+    capsule_a_transcrire.refresh_from_db()
+    assert capsule_a_transcrire.erreur_enrichissement == ""
+
+
+@pytest.mark.django_db
+def test_un_tagage_reussi_ne_masque_pas_l_echec_D_UNE_AUTRE_ETAPE(capsule_a_transcrire):
+    """Les trois étapes partagent un seul champ, et deux d'entre elles courent
+    EN PARALLÈLE. Effacer sans regarder ferait disparaître l'échec du voisin :
+    la capsule n'aurait plus d'étoile, et plus rien ne dirait pourquoi.
+    / One field for three steps, two of them concurrent: a blind wipe would
+      hide the neighbour's failure.
+    """
+    capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
+    capsule_a_transcrire.erreur_enrichissement = "Embedding : 512 dimensions au lieu de 1024"
+    capsule_a_transcrire.save()
+
+    with patch("capsules.tasks._appeler_le_modele_de_tags", return_value=["rue"]):
+        assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
+
+    capsule_a_transcrire.refresh_from_db()
+    assert capsule_a_transcrire.erreur_enrichissement.startswith("Embedding"), (
+        "l'échec de l'embedding a été effacé par la réussite du tagage"
+    )
+
+
+@pytest.mark.django_db
+def test_un_embedding_reussi_efface_l_erreur_d_embedding(capsule_a_transcrire):
+    capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
+    capsule_a_transcrire.erreur_enrichissement = "Embedding : service indisponible"
+    capsule_a_transcrire.save()
+
+    with patch("capsules.tasks._calculer_le_vecteur", return_value=[0.1] * 1024):
+        assert embarquer(str(capsule_a_transcrire.uuid)) == "ok"
+
+    capsule_a_transcrire.refresh_from_db()
+    assert capsule_a_transcrire.erreur_enrichissement == ""
+
+
+@pytest.mark.django_db
+def test_un_embedding_reussi_ne_masque_pas_l_echec_des_tags(capsule_a_transcrire):
+    capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
+    capsule_a_transcrire.erreur_enrichissement = "Extraction des tags : JSON illisible"
+    capsule_a_transcrire.save()
+
+    with patch("capsules.tasks._calculer_le_vecteur", return_value=[0.1] * 1024):
+        assert embarquer(str(capsule_a_transcrire.uuid)) == "ok"
+
+    capsule_a_transcrire.refresh_from_db()
+    assert capsule_a_transcrire.erreur_enrichissement.startswith("Extraction des tags"), (
+        "l'échec des tags a été effacé par la réussite de l'embedding"
+    )

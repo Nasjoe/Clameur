@@ -50,10 +50,10 @@ def test_robots_laisse_passer_les_depiauteurs_de_liens(client):
 
 
 @pytest.mark.django_db
-def test_chaque_page_porte_noindex(client, capsule_publiee, borne):
+def test_chaque_page_porte_noindex(client, capsule_publiee, reglages):
     """robots.txt empeche de parcourir, pas d'indexer une adresse trouvee
     ailleurs. La balise est le second verrou."""
-    for adresse in ("/", f"/b/{borne.slug}", f"/c/{capsule_publiee.uuid}", "/mentions-legales"):
+    for adresse in ("/", "/nouvelle", f"/c/{capsule_publiee.uuid}", "/mentions-legales"):
         html = client.get(adresse).content.decode()
         assert '<meta name="robots" content="noindex, nofollow">' in html, adresse
 

@@ -1,6 +1,6 @@
 """Garde-fous anti-abus. / Anti-abuse guards.
 
-Le QR de l'affiche se photographie, et /b/<slug> fonctionne depuis n'importe
+Le QR de l'affiche se photographie, et /nouvelle fonctionne depuis n'importe
 ou : sans limite, quelqu'un peut faire cracher des tickets en continu et vider
 le rouleau au milieu d'un evenement.
 / The poster's QR can be photographed: without a limit, someone empties the roll.

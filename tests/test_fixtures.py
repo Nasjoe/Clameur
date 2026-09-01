@@ -106,15 +106,14 @@ def test_vider_supprime_aussi_les_fichiers(petit_corpus):
 
 # ------------------------------------------------ le corpus « pour de vrai »
 
-"""Les fixtures savent parler et penser comme le vrai service — sur demande.
-
-`--avec-mistral` N'EST PAS ACTIF PAR DEFAUT, ET C'EST LE POINT. La suite de
-tests tourne dans le conteneur, où `MISTRAL_API_KEY` est présente : si la
-commande appelait l'API dès qu'elle voit une clé, chaque `make test`
-partirait sur le réseau et sur la note de frais.
-/ Never on by default: the test container has a key, and the suite must stay
-  offline and free.
-"""
+# Les fixtures savent parler et penser comme le vrai service — sur demande.
+#
+# `--avec-mistral` N'EST PAS ACTIF PAR DEFAUT, ET C'EST LE POINT. La suite de
+# tests tourne dans le conteneur, ou `MISTRAL_API_KEY` est presente : si la
+# commande appelait l'API des qu'elle voit une cle, chaque `make test`
+# partirait sur le reseau et sur la note de frais.
+# / Never on by default: the test container has a key, and the suite must stay
+#   offline and free.
 
 
 @pytest.mark.django_db
@@ -158,11 +157,18 @@ def test_sans_cle_le_corpus_se_fabrique_quand_meme(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_une_clameur_parlee_dure_ce_que_dure_son_audio():
+def test_une_clameur_parlee_dure_ce_que_dure_son_audio(monkeypatch):
     """Sur une capsule parlée, la durée affichée est celle du fichier, pas un
     tirage au sort : la fiche ne doit pas annoncer trois minutes pour trente
     secondes de voix. / A spoken capsule's duration is the file's own."""
     from unittest.mock import patch
+
+    # Une clé factice, POSÉE EXPRÈS : la commande renonce à la synthèse quand
+    # l'environnement n'en porte aucune, et ce test passerait alors pour de
+    # mauvaises raisons chez qui n'a pas de clé — sans jamais rien synthétiser.
+    # / A deliberate fake key: without one the command skips synthesis entirely,
+    #   and this test would pass for the wrong reason.
+    monkeypatch.setenv("MISTRAL_API_KEY", "clé-factice-jamais-appelée")
 
     from capsules.management.commands.creer_des_clameurs import CAPSULES_PARLEES
 
@@ -203,3 +209,56 @@ def test_une_clameur_parlee_dure_ce_que_dure_son_audio():
             f"{capsule.uuid} annonce {capsule.duree_secondes} s "
             f"pour {mesure.stdout.strip()} s d'audio"
         )
+
+
+@pytest.mark.django_db
+def test_un_lot_de_vecteurs_incomplet_ne_melange_pas_les_genres():
+    """Si l'API rend moins de vecteurs que de clameurs, on garde le synthétique.
+
+    `zip` s'arrêtait au plus court : les premières clameurs recevaient de vrais
+    vecteurs, les suivantes gardaient leurs gaussiennes, et la constellation
+    mélangeait deux espaces qui n'ont rien à voir — un ciel faux, sans un mot.
+    / zip stopped at the shortest, silently mixing two unrelated spaces.
+    """
+    from unittest.mock import patch
+
+    from capsules.management.commands.creer_des_clameurs import Command
+
+    with patch(
+        "capsules.management.commands.creer_des_clameurs._vecteurs_du_modele",
+        return_value=[[0.5] * 1024, [0.25] * 1024],   # deux vecteurs pour quatre
+    ), patch.object(Command, "_fabriquer_une_voix", return_value=None):
+        call_command("creer_des_clameurs", nombre=4, vider=True,
+                     avec_mistral=True, verbosity=0)
+
+    vecteurs = [tuple(c.embedding) for c in Capsule.objects.all()]
+    assert tuple([0.5] * 1024) not in vecteurs, (
+        "un lot incomplet a quand même été écrit : la constellation mélange "
+        "des vecteurs réels et des vecteurs synthétiques"
+    )
+
+
+@pytest.mark.django_db
+def test_un_vecteur_de_mauvaise_dimension_ne_rentre_pas_en_base():
+    """Même exigence que la tâche `embarquer` : un vecteur tronqué fausserait
+    la projection entière sans que rien ne le signale.
+
+    Ici il ferait pire que fausser : `bulk_update` lèverait côté base, APRÈS
+    que cent clameurs et leurs fichiers ont été créés, et l'appel n'est protégé
+    par aucun `try`. / A truncated vector would blow up bulk_update after a
+    hundred capsules and their files had already been written.
+    """
+    from unittest.mock import patch
+
+    from capsules.management.commands.creer_des_clameurs import Command
+
+    with patch(
+        "capsules.management.commands.creer_des_clameurs._vecteurs_du_modele",
+        return_value=[[0.5] * 512] * 4,          # 512 au lieu de 1024
+    ), patch.object(Command, "_fabriquer_une_voix", return_value=None):
+        call_command("creer_des_clameurs", nombre=4, vider=True,
+                     avec_mistral=True, verbosity=0)
+
+    assert Capsule.objects.count() == 4
+    for capsule in Capsule.objects.all():
+        assert len(capsule.embedding) == 1024

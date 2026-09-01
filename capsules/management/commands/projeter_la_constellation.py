@@ -10,27 +10,40 @@ montrer a quelqu'un. Les etoiles doivent etre fixes entre deux recalculs.
 
 POURQUOI T-SNE, ET POURQUOI ECRIT ICI.
 La PCA a tenu tant que les vecteurs venaient des fixtures — huit gaussiennes
-bien separees, un cas facile. Sur de VRAIS vecteurs `mistral-embed`, mesure le
-2026-08-31 sur soixante clameurs variees, elle place « dans le bon quartier »
-sans placer le bon voisin : la clameur affichee a cote n'etait la plus proche
-par le sens que dans un tiers des cas, et son rang median dans le vrai
-classement etait de huit sur cinquante-neuf. Avec t-SNE, rang median zero, et
-neuf fois sur dix le vrai voisin est a l'ecran.
+bien separees, un cas facile. Sur de VRAIS vecteurs `mistral-embed`, elle place
+« dans le bon quartier » sans placer le bon voisin.
+
+Mesure du 2026-08-31, sur soixante clameurs variees. Une seule question :
+pour chaque clameur, ou se situe sa voisine D'ECRAN dans son vrai classement
+semantique ?
+
+    PCA     rang median 8 sur 59, et le bon voisin affiche 1 fois sur 3
+    t-SNE   rang median 0,        et le bon voisin affiche 9 fois sur 10
+
+`_fidelite` mesure la meme chose plus grossierement, mais a chaque passage :
+la part des etoiles dont la voisine d'ecran fait partie de leurs plus proches
+par le sens. Sur le corpus de demonstration enrichi pour de vrai, elle passe
+d'environ 77 % avec la PCA a 99 % avec t-SNE.
+
 scikit-learn apporterait cela en une ligne, et une centaine de megaoctets dans
-l'image pour une commande lancee de loin en loin. Les quarante lignes ci-
-dessous font le meme travail avec le numpy deja installe.
+l'image pour une commande lancee de loin en loin. Le calcul ci-dessous fait le
+meme travail avec le numpy deja installe.
 / PCA held only while the vectors came from well-separated fixtures; on real
   embeddings it puts a clameur in the right neighbourhood but next to the wrong
-  neighbour. t-SNE fixes that, and forty lines of numpy avoid a 100 MB
-  dependency for a command run once in a while.
+  neighbour. Median rank of the on-screen neighbour: 8 of 59 under PCA, 0 under
+  t-SNE. Avoiding scikit-learn saves 100 MB for a command run once in a while.
 
 POURQUOI L'INITIALISATION PAR LA PCA.
 Un t-SNE parti d'un nuage aleatoire donne un ciel different a chaque passage :
 l'orientation change, et l'on ne retrouve plus une etoile reperee la veille.
-Parti de la PCA, il est ENTIEREMENT DETERMINISTE — memes vecteurs, memes
-positions — et il garde l'orientation d'ensemble d'une projection a l'autre.
-/ A random start would reorient the sky at every run; the PCA start makes the
-  result deterministic and keeps the overall orientation.
+Parti de la PCA, il rend les MEMES POSITIONS pour les memes vecteurs, et il
+garde l'orientation d'ensemble d'une projection a l'autre — a condition de
+fixer le signe des axes, que `svd` choisit sinon au hasard (voir `_pca`). La
+promesse vaut a bibliotheques constantes : une autre version de BLAS peut
+rendre une decomposition legerement differente.
+/ The PCA start gives identical positions for identical vectors and keeps the
+  overall orientation, provided the axis signs are pinned down (see _pca).
+  It holds for a given BLAS build, not across every possible one.
 
 POURQUOI LA VARIANCE EXPLIQUEE N'EST PLUS AFFICHEE.
 Elle passait pour le signal d'alerte. Elle ment : mesuree a 18,5 % sur les
@@ -84,6 +97,32 @@ class Command(BaseCommand):
             return
 
         vecteurs = np.vstack([np.asarray(c.embedding, dtype=float) for c in capsules])
+
+        # UNE SEULE CAPSULE ABIMEE EMPORTAIT LE SITE. La projection normalise
+        # les vecteurs : a norme nulle, la division rend NaN, et le NaN se
+        # propage a TOUTES les positions. Elles s'ecrivent sans broncher dans
+        # un FloatField, `exclude(position_x=None)` ne les filtre pas, et la
+        # page d'accueil finit en 500 sur le calcul de la teinte. Une capsule
+        # sans vecteur exploitable n'a pas d'etoile, voila tout — comme une
+        # capsule sans vecteur du tout.
+        # / One damaged capsule turned every position into NaN and took the
+        #   home page down. No usable vector, no star: nothing more.
+        exploitables = np.isfinite(vecteurs).all(axis=1) & (
+            np.linalg.norm(vecteurs, axis=1) > 0
+        )
+        if not exploitables.all():
+            self.stdout.write(self.style.WARNING(
+                f"  {(~exploitables).sum()} clameur(s) au vecteur inexploitable, "
+                "laissées de côté."
+            ))
+            capsules = [c for c, garde in zip(capsules, exploitables) if garde]
+            vecteurs = vecteurs[exploitables]
+            if len(capsules) < 3:
+                self.stdout.write(self.style.WARNING(
+                    f"{len(capsules)} clameur(s) exploitable(s) : trop peu pour projeter."
+                ))
+                return
+
         positions = self._projeter(vecteurs)
 
         for capsule, (x, y) in zip(capsules, positions):
@@ -95,9 +134,13 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS(
             f"{len(capsules)} clameurs projetées."
         ))
+        proches = self._combien_de_proches(len(capsules))
         self.stdout.write(
             f"  {fidelite:.0%} des étoiles ont pour plus proche voisine "
-            "l'une de leurs cinq clameurs les plus proches par le sens."
+            f"l'une de leurs {proches} clameurs les plus proches par le sens."
+            if proches > 1 else
+            f"  {fidelite:.0%} des étoiles ont pour plus proche voisine "
+            "leur clameur la plus proche par le sens."
         )
         if fidelite < 0.5:
             self.stdout.write(self.style.WARNING(
@@ -123,7 +166,21 @@ class Command(BaseCommand):
         """Les deux axes de plus grande variance. / The two widest axes."""
         centres = vecteurs - vecteurs.mean(axis=0)
         _u, _valeurs, directions = np.linalg.svd(centres, full_matrices=False)
-        return centres @ directions[:2].T
+
+        # LE SIGNE DES AXES EST ARBITRAIRE, ET IL FAUT LE FIXER SOI-MEME.
+        # `svd` peut rendre un axe ou son oppose, indifferemment. Une clameur
+        # de plus, et une fois sur deux les memes axes revenaient a l'envers :
+        # le ciel entier passait en miroir, et comme la teinte d'une etoile
+        # derive de son angle depuis le centre, toutes changeaient aussi de
+        # couleur. On impose donc une convention — la composante de plus grand
+        # module est positive — et l'orientation tient d'une projection a
+        # l'autre. / SVD signs are arbitrary; without a convention the whole
+        # sky mirrors itself, colours included, when one clameur is added.
+        axes = directions[:2]
+        dominantes = np.abs(axes).argmax(axis=1)
+        signes = np.sign(axes[np.arange(2), dominantes])
+        axes = axes * np.where(signes == 0, 1.0, signes)[:, None]
+        return centres @ axes.T
 
     def _tsne(self, vecteurs, depart):
         """t-SNE, en numpy. Rapproche a l'ecran ce qui est proche par le sens.
@@ -135,7 +192,18 @@ class Command(BaseCommand):
         """
         nombre = len(vecteurs)
         unitaires = vecteurs / np.linalg.norm(vecteurs, axis=1, keepdims=True)
-        carres = ((unitaires[:, None, :] - unitaires[None, :, :]) ** 2).sum(-1)
+
+        # DISTANCES PAR PRODUIT SCALAIRE, ET NON PAR SOUSTRACTION TERME A TERME.
+        # Ecrire `((u[:, None, :] - u[None, :, :]) ** 2).sum(-1)` demande un
+        # tableau de n x n x 1024 flottants : trois gigaoctets pour six cents
+        # clameurs, trente-trois pour deux mille. Le conteneur se fait tuer par
+        # l'OOM killer, et le journal ne dit qu'un mot : « Killed ». Entre
+        # vecteurs unitaires, ||a - b||² vaut 2 - 2·a·b : une multiplication de
+        # matrices, et n x n en memoire.
+        # / The naive form needs an n x n x 1024 array — 3 GB at six hundred
+        #   capsules — and the container dies with nothing but "Killed" in the
+        #   log. For unit vectors, ||a-b||² is 2 - 2·a·b.
+        carres = np.maximum(2 - 2 * (unitaires @ unitaires.T), 0)
 
         voisines = max(2.0, min(float(VOISINES), (nombre - 1) / 3))
         affinites = np.zeros_like(carres)
@@ -194,9 +262,22 @@ class Command(BaseCommand):
         unitaires = vecteurs / np.linalg.norm(vecteurs, axis=1, keepdims=True)
         cosinus = unitaires @ unitaires.T
         np.fill_diagonal(cosinus, -np.inf)
-        proches = np.argsort(-cosinus, axis=1)[:, :5]
+        proches = np.argsort(-cosinus, axis=1)[:, : self._combien_de_proches(len(vecteurs))]
 
         ecrans = ((positions[:, None, :] - positions[None, :, :]) ** 2).sum(-1)
         np.fill_diagonal(ecrans, np.inf)
         voisine = ecrans.argmin(axis=1)
         return float(np.mean([voisine[i] in proches[i] for i in range(len(vecteurs))]))
+
+    def _combien_de_proches(self, nombre: int) -> int:
+        """Combien de voisines par le sens comptent comme un succes.
+
+        JAMAIS PLUS DE LA MOITIE DU CORPUS. A cinq clameurs, « l'une des cinq
+        plus proches » les designe toutes : la mesure rendait 100 % sur un ciel
+        jete au hasard, et son avertissement ne pouvait jamais partir. C'est
+        pourtant en debut d'evenement, sur un corpus minuscule, que l'operateur
+        a le plus besoin de savoir si le ciel dit quelque chose.
+        / Never more than half the corpus: at five clameurs, "one of the five
+          nearest" means "any of them", and the measure flattered a random sky.
+        """
+        return max(1, min(5, (nombre - 1) // 2))

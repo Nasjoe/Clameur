@@ -48,6 +48,9 @@ aide:  ## Affiche cette aide
 	@printf "    Déposer        http://localhost:8000/nouvelle\n"
 	@printf "    Console        http://localhost:8000/admin/\n\n"
 	@printf "  $(BRUN)Bon à savoir$(FIN)\n"
+	@printf "    $(GRAS)make fixture$(FIN), et $(GRAS)make start$(FIN) sur une base vide, appellent Mistral :\n"
+	@printf "    cent vecteurs et six voix de synthèse. Sans clé, le corpus se\n"
+	@printf "    fabrique hors ligne, en synthétique — mais son ciel est un cas facile.\n\n"
 	@printf "    Sans clé Mistral, les capsules restent publiées et écoutables,\n"
 	@printf "    simplement sans transcription. Sans identifiants Sunmi, le ticket\n"
 	@printf "    s'écrit dans les journaux — avec les mêmes octets ESC/POS :\n"
@@ -72,7 +75,9 @@ demarrer-en-developpement: services
 	@if [ "$$($(COMPOSE) run --rm -T web python -c \
 	     'import django,os;os.environ.setdefault("DJANGO_SETTINGS_MODULE","clameur.settings");django.setup();from capsules.models import Capsule;print(Capsule.objects.count())' \
 	     2>/dev/null | tr -dc 0-9)" = "0" ]; then \
-		printf "  Base vide : création du corpus de démonstration.\n\n"; \
+		printf "  Base vide : création du corpus de démonstration.\n"; \
+		printf "  (appelle Mistral — vecteurs réels et six voix ; sans clé, tout\n"; \
+		printf "   se fabrique hors ligne, en synthétique.)\n\n"; \
 		$(DANS_WEB) creer_des_clameurs --nombre 100 --vider --avec-mistral; \
 		$(DANS_WEB) projeter_la_constellation; \
 	fi
@@ -115,7 +120,7 @@ migrate: services  ## Applique les migrations
 migrations:  ## Génère les migrations (écrit sur ton disque, d'où --user)
 	$(COMME_MOI) web python manage.py makemigrations
 
-fixture: migrate  ## Crée 100 clameurs de démonstration, puis lance le serveur
+fixture: migrate  ## Crée 100 clameurs de démonstration (appelle Mistral), puis lance le serveur
 	$(DANS_WEB) creer_des_clameurs --nombre 100 --vider --avec-mistral
 	$(DANS_WEB) projeter_la_constellation
 	@printf "\n  Constellation : http://localhost:8000/\n"

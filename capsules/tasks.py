@@ -18,6 +18,16 @@ logger = logging.getLogger(__name__)
 
 NOMBRE_DE_TAGS_MACHINE = 3
 
+# LES TROIS ETAPES PARTAGENT UN SEUL CHAMP D'ERREUR, et le nom de l'etape est
+# ce qui permet de savoir a laquelle appartient le message qui s'y trouve. Ce
+# ne sont donc pas des libelles d'affichage : ce sont des cles, et c'est
+# pourquoi elles vivent ici plutot qu'en toutes lettres a l'appel.
+# / One error field for three steps: the step name is the key that says whose
+#   message it holds.
+ETAPE_TRANSCRIPTION = "Transcription"
+ETAPE_TAGS = "Extraction des tags"
+ETAPE_EMBEDDING = "Embedding"
+
 
 def _enfiler(tache, uuid_capsule: str) -> None:
     """Enfile une suite sans laisser son echec remonter.
@@ -36,18 +46,45 @@ def _noter_l_echec(capsule, etape: str, erreur: Exception) -> None:
     capsule.save(update_fields=["erreur_enrichissement"])
 
 
+def _effacer_l_echec(capsule, etape: str) -> None:
+    """Efface l'erreur de CETTE etape, et d'elle seule.
+
+    L'OPERATEUR REJOUE UNE ETAPE, ELLE REUSSIT, ET LA CAPSULE ANNONCAIT
+    TOUJOURS UN ECHEC : il ne pouvait plus distinguer ce qui etait repare de ce
+    qui ne l'etait pas.
+    Mais effacer sans regarder serait pire. Les trois etapes se partagent un
+    seul champ, et `taguer` et `embarquer` courent EN PARALLELE : la reussite
+    de l'une ferait disparaitre l'echec de l'autre — une clameur sans etoile,
+    et plus rien pour dire pourquoi. On ne retire donc que ce que l'on a
+    soi-meme ecrit.
+    / A blind wipe would hide the concurrent step's failure: only clear what
+      this step itself wrote.
+    """
+    if not (capsule.erreur_enrichissement or "").startswith(etape):
+        return
+    capsule.erreur_enrichissement = ""
+    capsule.save(update_fields=["erreur_enrichissement"])
+
+
 @shared_task
 def transcrire(uuid_capsule: str) -> str:
     capsule = Capsule.objects.get(uuid=uuid_capsule)
     try:
         resultat = transcrire_le_fichier(capsule.audio_a_servir.path)
     except Exception as erreur:
-        _noter_l_echec(capsule, "Transcription", erreur)
+        _noter_l_echec(capsule, ETAPE_TRANSCRIPTION, erreur)
         return "echec"
 
     capsule.transcription_raw = {"segments": resultat["segments"]}
     capsule.transcription_texte = resultat["texte"]
     capsule.langue_detectee = resultat["langue"]
+
+    # ICI ON EFFACE TOUT, SANS REGARDER — a la difference de `taguer` et
+    # `embarquer`, qui ne retirent que leur propre message. C'est la tete de
+    # la chaine : une transcription reussie relance les deux suites derriere
+    # elle, et l'etat des etapes precedentes n'a plus cours.
+    # / The head of the chain restarts both follow-ups, so the previous state
+    #   no longer applies.
     capsule.erreur_enrichissement = ""
 
     # `update_fields` N'EST PAS UNE OPTIMISATION ICI, C'EST UNE CORRECTION.
@@ -133,6 +170,17 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
         # le modele l'appelle tantot « tags », tantot « mots-clés », tantot
         # « mots_clés ». / Whatever the key is called.
         valeur = next((v for v in valeur.values() if isinstance(v, list)), [])
+    elif not isinstance(valeur, list):
+        valeur = []
+
+    if not valeur:
+        # ON LEVE, ON NE REND PAS UNE LISTE VIDE. Rendre [] ferait dire « ok »
+        # a la tache et laisserait la capsule sans mots-cles, sans erreur et
+        # sans trace — exactement la panne silencieuse qu'on vient de corriger.
+        # Levee, l'erreur s'inscrit dans `erreur_enrichissement`, se voit dans
+        # la console et se rejoue.
+        # / Raise, never return an empty list: that was the silent failure.
+        raise ValueError(f"aucun mot-clé dans la réponse du modèle : {brut[:200]}")
     return [str(mot) for mot in valeur]
 
 
@@ -145,7 +193,7 @@ def taguer(uuid_capsule: str) -> str:
     try:
         mots = _appeler_le_modele_de_tags(capsule.transcription_texte)
     except Exception as erreur:
-        _noter_l_echec(capsule, "Extraction des tags", erreur)
+        _noter_l_echec(capsule, ETAPE_TAGS, erreur)
         return "echec"
 
     for mot in [str(m).strip().lower()[:60] for m in mots][:NOMBRE_DE_TAGS_MACHINE]:
@@ -158,6 +206,7 @@ def taguer(uuid_capsule: str) -> str:
             capsule=capsule, tag=tag, origine=TagDeCapsule.MACHINE
         )
 
+    _effacer_l_echec(capsule, ETAPE_TAGS)
     return "ok"
 
 
@@ -184,7 +233,7 @@ def embarquer(uuid_capsule: str) -> str:
     try:
         vecteur = _calculer_le_vecteur(capsule.transcription_texte)
     except Exception as erreur:
-        _noter_l_echec(capsule, "Embedding", erreur)
+        _noter_l_echec(capsule, ETAPE_EMBEDDING, erreur)
         return "echec"
 
     attendu = settings.MISTRAL_DIMENSIONS_EMBEDDING
@@ -193,7 +242,7 @@ def embarquer(uuid_capsule: str) -> str:
         # entiere sans que rien ne le signale.
         # / A truncated vector would silently skew the whole projection.
         _noter_l_echec(
-            capsule, "Embedding",
+            capsule, ETAPE_EMBEDDING,
             ValueError(f"{len(vecteur)} dimensions au lieu de {attendu}"),
         )
         return "echec"
@@ -201,4 +250,5 @@ def embarquer(uuid_capsule: str) -> str:
     capsule.embedding = vecteur
     capsule.enrichie_le = timezone.now()
     capsule.save(update_fields=["embedding", "enrichie_le"])
+    _effacer_l_echec(capsule, ETAPE_EMBEDDING)
     return "ok"

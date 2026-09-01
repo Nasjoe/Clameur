@@ -332,11 +332,18 @@ class Command(BaseCommand):
         capsule.save()
         self._creees.append(capsule)
 
+        # La publication SUIT la creation : les deux dates etaient tirees
+        # independamment, et une clameur sur deux etait publiee avant d'avoir
+        # ete enregistree. / Publication follows creation; the two draws were
+        # independent, so half the corpus was published before it existed.
+        creee_il_y_a = alea.randint(2, 720)
         Capsule.objects.filter(pk=capsule.pk).update(
             creee_le=timezone.now() - timezone.timedelta(
-                hours=alea.randint(1, 720), minutes=alea.randint(0, 59)
+                hours=creee_il_y_a, minutes=alea.randint(0, 59)
             ),
-            publiee_le=timezone.now() - timezone.timedelta(hours=alea.randint(1, 720)),
+            publiee_le=timezone.now() - timezone.timedelta(
+                hours=alea.randint(1, creee_il_y_a)
+            ),
         )
 
         for nom_de_tag in alea.sample(theme["tags"], alea.randint(1, 2)):
@@ -363,6 +370,31 @@ class Command(BaseCommand):
             ))
             return
 
+        # TOUT OU RIEN. `zip` s'arrete au plus court : un lot incomplet donnait
+        # de vrais vecteurs aux premieres clameurs et laissait aux suivantes
+        # leurs gaussiennes. La constellation melangeait alors deux espaces
+        # sans rapport — un ciel faux, et rien pour le dire.
+        # / All or nothing: zip would silently mix two unrelated spaces.
+        if len(vecteurs) != len(self._creees):
+            self.stdout.write(self.style.WARNING(
+                f"  {len(vecteurs)} vecteurs pour {len(self._creees)} clameurs : "
+                "lot incomplet, vecteurs synthétiques conservés."
+            ))
+            return
+
+        # MEME EXIGENCE QUE LA TACHE `embarquer` : un vecteur tronque fausserait
+        # la projection entiere sans que rien ne le signale. Ici il ferait pire :
+        # `bulk_update` leverait cote base, APRES que cent clameurs et leurs
+        # fichiers ont ete ecrits. / Same check as the `embarquer` task.
+        attendu = settings.MISTRAL_DIMENSIONS_EMBEDDING
+        mauvaises = [len(v) for v in vecteurs if len(v) != attendu]
+        if mauvaises:
+            self.stdout.write(self.style.WARNING(
+                f"  {len(mauvaises)} vecteur(s) de dimension {mauvaises[0]} au lieu "
+                f"de {attendu} : vecteurs synthétiques conservés."
+            ))
+            return
+
         for capsule, vecteur in zip(self._creees, vecteurs):
             capsule.embedding = vecteur
         Capsule.objects.bulk_update(self._creees, ["embedding"], batch_size=200)
@@ -379,6 +411,12 @@ class Command(BaseCommand):
         Rend None si la synthese echoue : une fixture ne doit jamais faire
         echouer `make fixture`. / Returns None on failure; fixtures never break.
         """
+        if not os.environ.get("MISTRAL_API_KEY"):
+            # Sans clef, inutile d'essayer six fois : chaque appel leverait, et
+            # le journal se remplirait de traces pour une absence connue
+            # d'avance. / No key: don't try six times and log six tracebacks.
+            return None
+
         phrases = alea.sample(theme["phrases"], min(len(theme["phrases"]), 3))
         # Une fois sur deux, deux timbres qui se repondent : c'est ce que la
         # diarisation doit savoir separer, et ce que la page doit savoir
@@ -413,9 +451,18 @@ class Command(BaseCommand):
     def _assembler(self, morceaux, dossier):
         """Colle les repliques bout a bout, separees d'un souffle, en m4a.
         / Joins the lines with a breath between them."""
+        # LE SILENCE PREND LA FREQUENCE DES REPLIQUES, ON NE LA DEVINE PAS.
+        # Le demultiplexeur `concat` exige des flux identiques : un silence
+        # fige a 24 kHz alors que la synthese en rendrait 44,1 ferait echouer
+        # l'assemblage, et TOUTES les clameurs parlees retomberaient sur le bip
+        # sans un mot — le repli du `try` masquerait la panne.
+        # / concat demands identical streams; a hard-coded rate would silently
+        #   send every spoken capsule back to the beep.
+        frequence = self._frequence_du_fichier(morceaux[0])
         silence = Path(dossier) / "silence.wav"
         subprocess.run(
-            ["ffmpeg", "-y", "-f", "lavfi", "-i", "anullsrc=r=24000:cl=mono",
+            ["ffmpeg", "-y", "-f", "lavfi",
+             "-i", f"anullsrc=r={frequence}:cl=mono",
              "-t", str(SILENCE_ENTRE_REPLIQUES), str(silence)],
             check=True, capture_output=True, timeout=60,
         )
@@ -431,6 +478,15 @@ class Command(BaseCommand):
             check=True, capture_output=True, timeout=120,
         )
         return io.BytesIO(sortie.read_bytes())
+
+    def _frequence_du_fichier(self, chemin) -> int:
+        mesure = subprocess.run(
+            ["ffprobe", "-v", "error", "-select_streams", "a:0",
+             "-show_entries", "stream=sample_rate",
+             "-of", "default=nw=1:nk=1", str(chemin)],
+            check=True, capture_output=True, text=True, timeout=30,
+        )
+        return int(mesure.stdout.strip())
 
     def _duree_du_fichier(self, chemin) -> float:
         mesure = subprocess.run(

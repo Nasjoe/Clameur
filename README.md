@@ -39,8 +39,8 @@ Les positions sont **calculées une fois et stockées**. Une projection est
 globale : la recalculer à chaque visite déplacerait toutes les étoiles, et on
 ne pourrait plus revenir à une clameur repérée la veille.
 
-`make constellation` les recalcule par t-SNE — quarante lignes de numpy, aucune
-dépendance de plus — et annonce la seule mesure qui engage le ciel : la part
+`make constellation` les recalcule par t-SNE — écrit en numpy dans la commande,
+aucune dépendance de plus — et annonce la seule mesure qui engage le ciel : la part
 des étoiles dont la voisine à l'écran est vraiment une voisine par le sens.
 Elle est de 99 % sur un corpus enrichi pour de vrai.
 
@@ -90,15 +90,15 @@ octets ESC/POS** que la vraie imprimante :
 docker compose logs -f celery | grep -A 20 "Ticket (mock)"
 ```
 
-**`make` sans argument affiche l'aide** — les quatorze commandes disponibles,
+**`make` sans argument affiche l'aide** — les dix-sept commandes disponibles,
 les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 
 | Commande | |
 |---|---|
 | `make start` | lance la pile, selon `DEBUG` |
 | `make journaux` · `make arreter` | suivre, arrêter |
-| `make fixture` | recrée le corpus de démonstration |
-| `make test` | les 111 tests |
+| `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
+| `make test` | les 133 tests |
 | `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel |
 | `make imprimante` | ticket de test sur une vraie Sunmi |

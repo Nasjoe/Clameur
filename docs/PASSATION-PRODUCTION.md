@@ -251,7 +251,7 @@ Elle projette par **t-SNE**, écrit en numpy dans la commande elle-même — pas
 `scikit-learn`, toujours absent volontairement. La PCA occupait cette place
 jusqu'au 2026-08-31 ; mesurée sur de vrais vecteurs `mistral-embed`, elle
 plaçait la clameur dans le bon quartier mais à côté de la mauvaise voisine
-(77 % contre 99 %). **N'utilise pas la variance expliquée comme signal** : elle
+(environ 77 % contre 99 %). **N'utilise pas la variance expliquée comme signal** : elle
 valait 18,5 % sur les fixtures, où la séparation est parfaite, et 9,7 % sur de
 vraies clameurs. Elle monte quand le problème devient facile, et c'est pour
 cela qu'elle a été retirée de l'affichage.
