@@ -20,6 +20,8 @@ urlpatterns = [
     path("c/<uuid:uuid>", views.lire_capsule, name="lire_capsule"),
     path("c/<uuid:uuid>/publier", views.publier_capsule, name="publier_capsule"),
     path("c/<uuid:uuid>/ecoute", views.compter_une_ecoute, name="compter_une_ecoute"),
+    path("c/<uuid:uuid>/retirer", views.retirer_capsule, name="retirer_capsule"),
+    path("c/<uuid:uuid>/reimprimer", views.reimprimer_capsule, name="reimprimer_capsule"),
     path("mentions-legales", views.mentions_legales, name="mentions_legales"),
     # Deux adresses que personne ne tape et que tout le monde demande.
     # / Two addresses nobody types and everything requests.

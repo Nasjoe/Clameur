@@ -39,6 +39,10 @@ partage et se recharge — et la liste se met à jour sans rechargement.
 Chaque clameur porte un bouton qui copie son lien : c'est ce lien-là qu'on
 envoie à quelqu'un, celui du ticket.
 
+Sur la page d'une clameur, **son auteur peut la retirer** — son téléphone s'en
+souvient pendant six mois — et **le personnel peut relancer un second ticket**
+si le premier s'est perdu.
+
 Le **titre** est écrit par la machine, dans le même appel qui extrait les
 mots-clés : rien de plus à saisir avant de publier, et rien de plus à payer.
 
@@ -108,7 +112,7 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make start` | lance la pile, selon `DEBUG` |
 | `make journaux` · `make arreter` | suivre, arrêter |
 | `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
-| `make test` | les 149 tests |
+| `make test` | les 165 tests |
 | `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel — **en sommeil** |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
@@ -148,14 +152,28 @@ ombre dure et décalée dans laquelle l'objet s'enfonce au survol.
 
 ## Vie privée
 
-Ni compte, ni cookie de suivi, ni position — le compteur d'écoutes se passe
-de session, au prix d'être approximatif derrière une connexion partagée. Le site conserve l'enregistrement,
-la photo éventuelle, le pseudo et les mots-clés saisis. **Les métadonnées EXIF
-des photos sont supprimées à l'ingestion** : une photo de téléphone porte
-souvent des coordonnées GPS, qui trahiraient l'emplacement de la borne.
+Ni compte, ni mot de passe, ni position. Le site conserve l'enregistrement, la
+photo éventuelle, le pseudo et les mots-clés saisis. **Les métadonnées EXIF des
+photos sont supprimées à l'ingestion** : une photo de téléphone porte souvent
+des coordonnées GPS, qui trahiraient l'emplacement de la borne.
 
-Le projet est hébergeur au sens de la LCEN : la console opérateur porte un
-retrait immédiat par capsule.
+**Un cookie de session, et rien d'autre.** Il ne suit personne : il retient
+seulement *les clameurs que vous avez déposées* — c'est ce qui vous permet de
+les retirer vous-même — et *le pseudo* sous lequel vous les signez, pour ne pas
+le retaper. Ni page vue, ni écoute, ni provenance. Il dure six mois, parce
+qu'un ticket collé sur un mur vit plus longtemps qu'une session ordinaire et
+que son auteur doit pouvoir revenir dessus. Sans compte, c'est le seul lien
+entre une personne et sa clameur : **nettoyer ses cookies le rompt
+définitivement**, et rien ne peut le rétablir.
+
+Le compteur d'écoutes, lui, ne s'appuie sur aucune session : il déduplique par
+adresse, au prix d'être approximatif derrière une connexion partagée.
+
+Le projet est hébergeur au sens de la LCEN. Le retrait existe à deux mains :
+**l'auteur retire sa propre clameur** depuis sa page, et la console opérateur
+retire n'importe laquelle sur signalement. Retirer n'est pas effacer : la
+clameur quitte la liste, et le ticket déjà collé mène à une page qui l'explique
+— jamais un 404 nu.
 
 ## État
 

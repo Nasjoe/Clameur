@@ -133,15 +133,19 @@ def test_un_envoi_reussi_conserve_le_numero_sunmi(capsule, reglages, monkeypatch
         def can_print(self):
             return True, ""
 
-        def print_ticket(self, capsule, url):
-            return "N411_abcd1234_1700000000"
+        def print_ticket(self, capsule, url, reference=""):
+            # La tache passe l'identifiant de la demande : c'est lui qui
+            # distingue deux tickets d'une meme clameur.
+            # / The task passes the request's id: that is what tells two
+            #   tickets of the same clameur apart.
+            return f"N411_abcd1234_{reference}"
 
     monkeypatch.setattr("impression.tasks.choisir_le_backend", lambda b: BackendQuiImprime())
     job = JobImpression.objects.create(capsule=capsule, reglages=reglages)
 
     assert envoyer_le_ticket(job.pk) == StatutJob.ENVOYE
     job.refresh_from_db()
-    assert job.trade_no == "N411_abcd1234_1700000000"
+    assert job.trade_no == f"N411_abcd1234_{job.pk}"
 
 
 @pytest.mark.django_db

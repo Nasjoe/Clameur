@@ -76,11 +76,11 @@ class MockBackend(PrinterBackend):
         """
         return False, "Imprimante simulée : le ticket ne sortira pas."
 
-    def print_ticket(self, capsule, url_capsule: str) -> str:
+    def print_ticket(self, capsule, url_capsule: str, reference="") -> str:
         octets = construire_le_ticket(capsule, self.reglages.dots_par_ligne, url_capsule)
         cadre = ["+" + "-" * LARGEUR_CADRE + "+"]
         for ligne in decoder_escpos(octets):
             cadre.append("| " + ligne[: LARGEUR_CADRE - 2].ljust(LARGEUR_CADRE - 2) + " |")
         cadre.append("+" + "-" * LARGEUR_CADRE + "+")
         logger.info("Ticket (mock) :\n%s", "\n".join(cadre))
-        return f"mock_{capsule.uuid}"
+        return f"mock_{capsule.uuid}_{reference}" if reference else f"mock_{capsule.uuid}"

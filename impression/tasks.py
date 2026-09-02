@@ -57,7 +57,9 @@ def envoyer_le_ticket(job_pk: int) -> str:
         return job.statut
 
     try:
-        job.trade_no = backend.print_ticket(job.capsule, url_de_la_capsule(job.capsule))
+        job.trade_no = backend.print_ticket(
+            job.capsule, url_de_la_capsule(job.capsule), reference=job.pk
+        )
         job.statut = StatutJob.ENVOYE
         job.message_erreur = ""
     except Exception as erreur:

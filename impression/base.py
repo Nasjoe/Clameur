@@ -19,7 +19,17 @@ class PrinterBackend:
         """
         raise NotImplementedError
 
-    def print_ticket(self, capsule, url_capsule: str) -> str:
+    def print_ticket(self, capsule, url_capsule: str, reference="") -> str:
         """Imprime le ticket d'une capsule et rend le trade_no Sunmi.
-        / Prints a capsule's ticket and returns the Sunmi trade_no."""
+
+        `reference` IDENTIFIE LA DEMANDE, PAS LA CAPSULE, et c'est ce qui
+        permet d'imprimer un second ticket de la meme clameur. Sunmi
+        deduplique sur le trade_no : sans elle, une reimpression porterait le
+        meme numero que la premiere et serait ignoree en silence. On y passe
+        l'identifiant du `JobImpression` — un rejeu du meme job garde donc son
+        numero et reste idempotent, une nouvelle demande en obtient un autre.
+        / It identifies the REQUEST, not the capsule: Sunmi deduplicates on the
+          trade_no, so a reprint needs its own. The JobImpression's id keeps a
+          redelivered task idempotent while a new request gets a new number.
+        """
         raise NotImplementedError

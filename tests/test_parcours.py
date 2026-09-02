@@ -176,9 +176,9 @@ def test_un_meme_locuteur_garde_la_meme_couleur(client, capsule_publiee):
     ]}
     capsule_publiee.save()
 
-    from capsules.views import _colorer_les_voix
+    from capsules.views import preparer_les_paroles
 
-    segments = _colorer_les_voix(capsule_publiee.transcription_raw["segments"])
+    segments = preparer_les_paroles(capsule_publiee.transcription_raw["segments"])
     assert segments[0]["couleur"] == segments[2]["couleur"], "même voix, couleurs différentes"
     assert segments[0]["couleur"] != segments[1]["couleur"], "deux voix, même couleur"
 
@@ -233,3 +233,52 @@ def test_deux_visiteurs_derriere_le_meme_proxy_ne_se_bloquent_pas(client, reglag
     assert limite_atteinte(requete_de("198.51.100.9"), "creation") is False, (
         "un visiteur innocent est bloqué par le compteur d'un autre"
     )
+
+
+def test_les_locuteurs_sont_nommes_en_francais_et_dans_l_ordre():
+    """`speaker_1` est l'identifiant de Voxtral, pas un mot pour un visiteur.
+
+    On numérote dans l'ordre d'apparition, quelle que soit l'étiquette rendue
+    par l'API : « speaker_0 », « speaker_7 » ou « voix » deviennent Voix 1,
+    Voix 2… / Voxtral's identifier is not a word for a visitor.
+    """
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "speaker_3", "start": 0, "end": 1, "text": "Premier."},
+        {"speaker": "speaker_1", "start": 1, "end": 2, "text": "Deuxième."},
+        {"speaker": "speaker_3", "start": 2, "end": 3, "text": "Le premier revient."},
+    ])
+    assert [p["speaker"] for p in paroles] == ["Voix 1", "Voix 2", "Voix 1"]
+
+
+def test_deux_repliques_de_suite_du_meme_locuteur_n_en_font_qu_une():
+    """Voxtral coupe au silence, pas au tour de parole : une même personne
+    produit trois segments d'affilée, et la page les affichait comme trois
+    interventions séparées, chacune avec son étiquette.
+    / Voxtral splits on silence, not on turns: one person yielded three
+      labelled blocks in a row."""
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "speaker_1", "start": 0.0, "end": 1.5, "text": "Trente-deux ans."},
+        {"speaker": "speaker_1", "start": 1.8, "end": 3.0, "text": "Mon père y allait."},
+        {"speaker": "speaker_2", "start": 3.2, "end": 4.0, "text": "Et personne n'a rien vu."},
+    ])
+
+    assert len(paroles) == 2
+    assert paroles[0]["text"] == "Trente-deux ans. Mon père y allait."
+    assert paroles[0]["start"] == 0.0
+    assert paroles[0]["end"] == 3.0, "la parole fusionnée doit courir jusqu'à la fin"
+    assert paroles[1]["speaker"] == "Voix 2"
+
+
+def test_une_seule_voix_garde_une_seule_couleur():
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "voix", "start": 0, "end": 1, "text": "Un."},
+        {"speaker": "voix", "start": 2, "end": 3, "text": "Deux."},
+    ])
+    assert len(paroles) == 1
+    assert paroles[0]["speaker"] == "Voix 1"

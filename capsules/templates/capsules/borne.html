@@ -71,7 +71,8 @@
 
   <form id="formulaire-publication" style="display:grid;gap:var(--space-sm)">
     <label for="pseudo" class="doux">{% translate "Un pseudo, si tu veux" %}</label>
-    <input class="champ" type="text" id="pseudo" name="pseudo" maxlength="80" autocomplete="off">
+    <input class="champ" type="text" id="pseudo" name="pseudo" maxlength="80"
+           autocomplete="off" value="{{ pseudo_connu }}">
 
     <label for="tag1" class="doux">{% blocktranslate %}Jusqu'à {{ nombre_max_de_tags }} mots-clés{% endblocktranslate %}</label>
     <div class="duo-champs">

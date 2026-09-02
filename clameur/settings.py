@@ -35,6 +35,20 @@ ALLOWED_HOSTS = [
 # borne ne fonctionne alors pas du tout.
 # / Behind Traefik+nginx Django would think it is on HTTP: no CSRF, no microphone.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+# SIX MOIS, LA OU DJANGO PROPOSE DEUX SEMAINES. Sans compte ni mot de passe,
+# la session est le SEUL lien entre une personne et la clameur qu'elle a
+# deposee : c'est elle qui lui permet de la retirer. Or un ticket colle sur un
+# mur vit bien plus longtemps que quinze jours, et son auteur peut vouloir
+# revenir dessus des mois apres. Expiree, la session ne laisse aucun recours —
+# il n'y a pas de compte pour la retrouver.
+# `SAVE_EVERY_REQUEST` fait glisser la fenetre : elle court a partir de la
+# derniere visite, et non de la premiere.
+# / Six months, not two weeks: with no accounts, the session is the only thing
+#   that lets an author take their clameur down, and a ticket on a wall
+#   outlives a fortnight. The sliding window counts from the last visit.
+SESSION_COOKIE_AGE = 60 * 60 * 24 * 180
+SESSION_SAVE_EVERY_REQUEST = True
 USE_X_FORWARDED_HOST = True
 
 # Django exige l'origine complete, schema compris, pour valider un POST.

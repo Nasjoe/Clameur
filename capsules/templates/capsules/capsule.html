@@ -76,6 +76,40 @@
   .partager-dit { font-size: var(--text-xs); white-space: nowrap; }
   .partager.dit { color: var(--color-ambre); }
 
+  /* --- L'atelier : ce que seuls l'auteur et le personnel voient ---------
+     A l'ECART du bouton d'ecoute, et sobre : ces gestes ne s'adressent pas au
+     passant qui vient d'ouvrir un ticket.
+     / Set apart from the listen button: these are not for the passer-by. --- */
+  .atelier {
+    display: flex; flex-wrap: wrap; gap: var(--space-xs);
+    margin-top: var(--space-xl); padding-top: var(--space-md);
+    border-top: 1px solid var(--color-trait);
+  }
+  .atelier form { margin: 0; }
+  .action {
+    font: inherit; font-size: var(--text-sm);
+    padding: var(--space-2xs) var(--space-sm);
+    background: transparent; color: var(--color-ink-doux);
+    border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
+    cursor: pointer;
+    transition: color var(--dur-court) var(--ease-out),
+                border-color var(--dur-court) var(--ease-out);
+  }
+  .action:hover { color: var(--color-ink); border-color: var(--color-ink-tenu); }
+  .action--retrait:hover { color: var(--color-rose); border-color: var(--color-rose); }
+  .action:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+  .confirmation {
+    border: none; border-radius: var(--radius-lg); max-width: 24rem;
+    background: var(--color-paper-2); color: var(--color-ink);
+    padding: var(--space-xl); text-align: center;
+    box-shadow: var(--porte-decalage) var(--porte-decalage) 0 var(--color-rose-ombre);
+  }
+  .confirmation::backdrop { background: var(--color-voile); }
+  .confirmation h2 { font-size: var(--text-xl); margin: 0 0 var(--space-2xs);
+                     text-wrap: balance; }
+  .confirmation form { margin: var(--space-md) 0 var(--space-sm); }
+
   .parole {
     margin: 0 0 var(--space-sm); padding-left: var(--space-sm);
     border-left: 2px solid var(--voix);
@@ -151,6 +185,41 @@
       {% translate "Découvrir les autres clameurs" %}
     </a>
   </p>
+
+  {% if est_la_sienne or user.is_staff %}
+    <section class="atelier" aria-label="{% translate 'Actions' %}">
+      {% if user.is_staff %}
+        <form method="post" action="{% url 'capsules:reimprimer_capsule' capsule.uuid %}">
+          {% csrf_token %}
+          <button type="submit" class="action">{% translate "Imprimer un second ticket" %}</button>
+        </form>
+      {% endif %}
+
+      {% comment %} Le retrait passe par une confirmation : un bouton qui fait
+        taire une voix au premier contact est trop facile a toucher du pouce.
+        / A button that silences a voice on first touch is too easy to hit.
+      {% endcomment %}
+      <button type="button" class="action action--retrait" id="bouton-retirer">
+        {% translate "Retirer cette clameur" %}
+      </button>
+
+      <dialog class="confirmation" id="dialogue-retrait">
+        <h2>{% translate "Retirer cette clameur ?" %}</h2>
+        <p class="doux">
+          {% translate "Elle quittera la liste. Le ticket déjà collé mènera à une page qui explique qu'elle a été retirée." %}
+        </p>
+        <form method="post" action="{% url 'capsules:retirer_capsule' capsule.uuid %}">
+          {% csrf_token %}
+          <button type="submit" class="porte porte--pleine porte--large">
+            {% translate "Oui, la retirer" %}
+          </button>
+        </form>
+        <button type="button" class="porte porte--fantome porte--large" id="annuler-retrait">
+          {% translate "Annuler" %}
+        </button>
+      </dialog>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
 
@@ -159,6 +228,17 @@
 <script>
   // L'ecoute est comptee AU CLIC, jamais au chargement : c'est la seule mesure
   // qui dise si les passants ecoutent vraiment.
+  // Le dialogue de confirmation du retrait : `showModal` apporte le voile, le
+  // piege au clavier et la fermeture par Echap.
+  // / showModal brings the backdrop, focus trap and Escape for free.
+  const retirer = document.getElementById("bouton-retirer");
+  const dialogue = document.getElementById("dialogue-retrait");
+  if (retirer && dialogue) {
+    retirer.addEventListener("click", () => dialogue.showModal());
+    document.getElementById("annuler-retrait")
+            .addEventListener("click", () => dialogue.close());
+  }
+
   const bouton = document.getElementById("bouton-ecouter");
   const lecteur = document.getElementById("lecteur");
   bouton.addEventListener("click", () => {

@@ -71,7 +71,7 @@ class SunmiCloudBackend(PrinterBackend):
         en_ligne = donnees.get("status") in ("online", 1, "1", True)
         return en_ligne, "" if en_ligne else "Imprimante hors ligne."
 
-    def print_ticket(self, capsule, url_capsule: str) -> str:
+    def print_ticket(self, capsule, url_capsule: str, reference="") -> str:
         pilote = self._pilote()
         pilote.appendRawData(
             construire_le_ticket(capsule, self.reglages.dots_par_ligne, url_capsule)
@@ -82,10 +82,19 @@ class SunmiCloudBackend(PrinterBackend):
         # un second ticket. Or Celery redelivre les taches interrompues
         # (`acks_late`), et le garde de `envoyer_le_ticket` ne peut rien contre
         # une coupure survenue APRES l'envoi mais AVANT l'ecriture du statut.
-        # L'UUID de la capsule suffit : il est unique et il ne change pas.
         # / Deterministic, no clock: this is our idempotency key on Sunmi's side,
         #   and a redelivered task must produce the same number.
+        #
+        # ON Y AJOUTE LA DEMANDE, ET NON SEULEMENT LA CAPSULE. L'UUID seul
+        # rendait toute reimpression impossible : le second envoi portait le
+        # meme numero, Sunmi l'ignorait, le job passait « envoye » et le papier
+        # restait vierge. L'identifiant du job distingue deux demandes tout en
+        # gardant un rejeu identique a lui-meme.
+        # / The capsule's UUID alone made reprinting impossible: Sunmi ignored
+        #   the second push and nothing said so.
         numero = f"{self.reglages.numero_serie_imprimante}_{capsule.uuid.hex[:16]}"
+        if reference:
+            numero = f"{numero}_{reference}"
         pilote.pushContent(
             trade_no=numero,
             sn=self.reglages.numero_serie_imprimante,

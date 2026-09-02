@@ -21,14 +21,14 @@ def diffuser_la_transcription(capsule) -> None:
     est un confort, jamais une condition.
     / Never raises: real time is a comfort, never a requirement.
     """
-    from capsules.views import _colorer_les_voix
+    from capsules.views import preparer_les_paroles
 
     try:
         html = render_to_string(
             "capsules/_transcription.html",
             {
                 "capsule": capsule,
-                "segments": _colorer_les_voix(
+                "segments": preparer_les_paroles(
                     (capsule.transcription_raw or {}).get("segments") or []
                 ),
                 # `oob` ajoute hx-swap-oob sur l'element racine. On utilise

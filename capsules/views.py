@@ -10,7 +10,7 @@ from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.cache import cache
 from django.db import transaction
 from django.db.models import F, Q
-from django.http import Http404, HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext as _
@@ -26,6 +26,13 @@ logger = logging.getLogger(__name__)
 
 DUREE_DU_CACHE_IMPRIMANTE = 30
 NOMBRE_MAX_DE_TAGS = 2
+
+# Ce que la session retient du visiteur : les clameurs qu'il a deposees, et le
+# nom sous lequel il les signe. Rien d'autre — ni page vue, ni ecoute, ni
+# provenance. / What the session remembers: nothing but this.
+CLE_DES_CLAMEURS = "mes_clameurs"
+CLE_DU_PSEUDO = "pseudo"
+CLAMEURS_RETENUES = 50
 
 # Au-dela, le ciel devient illisible et la page trop lourde. La
 # constellation n'est pas un moteur de recherche : c'est une vue d'ensemble.
@@ -122,6 +129,7 @@ def accueil_enregistrement(request):
             "reglages": reglages,
             "imprimante": interroger_l_imprimante(reglages),
             "nombre_max_de_tags": NOMBRE_MAX_DE_TAGS,
+            "pseudo_connu": request.session.get(CLE_DU_PSEUDO, ""),
         },
     )
 
@@ -215,7 +223,40 @@ def publier_capsule(request, uuid):
         _attacher_les_tags(capsule, request.POST.getlist("tags"))
         publier(capsule)
 
+    _retenir(request, capsule)
     return JsonResponse({"uuid": str(capsule.uuid), "url": f"/c/{capsule.uuid}"})
+
+
+def _retenir(request, capsule) -> None:
+    """Note dans la session que cette clameur est celle du visiteur.
+
+    C'EST LE SEUL LIEN ENTRE UNE PERSONNE ET SA CLAMEUR. Sans compte, sans
+    mot de passe et sans adresse, la session est ce qui lui permettra de la
+    retirer plus tard. Elle dure six mois (voir `settings`), et un nettoyage de
+    cookies l'emporte — il n'y a alors aucun recours, c'est le prix de
+    l'absence de compte.
+    / The only link between a person and their clameur; clearing cookies ends
+      it, and nothing can bring it back.
+    """
+    miennes = request.session.get(CLE_DES_CLAMEURS, [])
+    if str(capsule.uuid) not in miennes:
+        # Une liste bornee : la session voyage dans un cookie signe cote
+        # serveur, mais rien ne justifie d'y empiler mille identifiants.
+        # / A bounded list: no reason to pile up a thousand identifiers.
+        miennes = ([*miennes, str(capsule.uuid)])[-CLAMEURS_RETENUES:]
+        request.session[CLE_DES_CLAMEURS] = miennes
+
+    # ON N'EFFACE PAS UN PSEUDO CONNU PAR UN PSEUDO VIDE : rester anonyme une
+    # fois ne doit pas faire oublier le nom d'avant.
+    # / Going anonymous once must not erase the name.
+    if capsule.pseudo:
+        request.session[CLE_DU_PSEUDO] = capsule.pseudo
+
+
+def est_la_sienne(request, capsule) -> bool:
+    """Le visiteur est-il l'auteur de cette clameur ?
+    / Is the visitor the one who recorded this clameur?"""
+    return str(capsule.uuid) in request.session.get(CLE_DES_CLAMEURS, [])
 
 
 def _attacher_les_tags(capsule, mots) -> None:
@@ -249,7 +290,8 @@ def lire_capsule(request, uuid):
         "capsules/capsule.html",
         {
             "capsule": capsule,
-            "segments": _colorer_les_voix(
+            "est_la_sienne": est_la_sienne(request, capsule),
+            "segments": preparer_les_paroles(
                 (capsule.transcription_raw or {}).get("segments") or []
             ),
             "tags": _mots_cles(capsule),
@@ -258,18 +300,120 @@ def lire_capsule(request, uuid):
     )
 
 
-def _colorer_les_voix(segments):
-    """Attribue une couleur a chaque locuteur, dans son ordre d'apparition.
-    / Assigns a colour to each speaker, in order of first appearance."""
-    couleur_du_locuteur = {}
+def preparer_les_paroles(segments):
+    """Des segments de Voxtral aux paroles qu'on lit sur la page.
+
+    Trois choses, dans cet ordre :
+
+    1. ON FUSIONNE LES SEGMENTS QUI SE SUIVENT POUR UN MEME LOCUTEUR. Voxtral
+       coupe au SILENCE, pas au tour de parole : quelqu'un qui respire au
+       milieu d'une phrase produit deux segments, et la page affichait deux
+       interventions, chacune avec son etiquette. Une personne qui parle
+       trente secondes devenait un escalier d'etiquettes.
+    2. ON NOMME LES LOCUTEURS EN FRANCAIS, dans leur ordre d'apparition.
+       « speaker_1 » est un identifiant d'API, pas un mot pour un visiteur — et
+       les numeros de Voxtral ne commencent pas toujours a un.
+    3. On donne UNE COULEUR PAR LOCUTEUR, pas par segment : colorer au fil des
+       segments donnerait deux teintes a la meme personne qui parle deux fois.
+
+    On ne touche pas a `transcription_raw` : la reponse brute de l'API reste
+    telle quelle en base, et cette mise en forme se refait a chaque affichage.
+    / Voxtral splits on silence, not on turns; we merge, name and colour for
+      display only, leaving the stored response untouched.
+    """
+    paroles = []
+    numero_du_locuteur = {}
     for segment in segments:
         locuteur = segment.get("speaker") or "voix"
-        if locuteur not in couleur_du_locuteur:
-            couleur_du_locuteur[locuteur] = COULEURS_DES_VOIX[
-                len(couleur_du_locuteur) % len(COULEURS_DES_VOIX)
-            ]
-        segment["couleur"] = couleur_du_locuteur[locuteur]
-    return segments
+        if locuteur not in numero_du_locuteur:
+            numero_du_locuteur[locuteur] = len(numero_du_locuteur) + 1
+        numero = numero_du_locuteur[locuteur]
+
+        texte = (segment.get("text") or "").strip()
+        if paroles and paroles[-1]["_locuteur"] == locuteur:
+            precedente = paroles[-1]
+            precedente["text"] = f"{precedente['text']} {texte}".strip()
+            precedente["end"] = segment.get("end")
+            continue
+
+        paroles.append({
+            "_locuteur": locuteur,
+            "speaker": _("Voix %(numero)s") % {"numero": numero},
+            "start": segment.get("start"),
+            "end": segment.get("end"),
+            "text": texte,
+            "couleur": COULEURS_DES_VOIX[(numero - 1) % len(COULEURS_DES_VOIX)],
+        })
+    return paroles
+
+
+@require_POST
+def retirer_capsule(request, uuid):
+    """Retire une clameur : son auteur, ou le personnel.
+
+    RETIRER N'EST PAS EFFACER, et c'est delibere. Le ticket est deja colle
+    quelque part : son porteur merite la page qui explique, jamais un 404 nu.
+    La capsule reste en base, l'operateur peut la republier, et l'effacement
+    definitif reste un geste conscient depuis la console.
+    / Taking down is not erasing: the ticket is already on a wall, and its
+      finder deserves an explanation rather than a bare 404.
+    """
+    capsule = get_object_or_404(Capsule, uuid=uuid)
+
+    # SANS CE CONTROLE, N'IMPORTE QUI AYANT SCANNE UN TICKET POURRAIT FAIRE
+    # TAIRE SON AUTEUR. / Without this, anyone who scanned a ticket could
+    # silence its author.
+    if not (est_la_sienne(request, capsule) or request.user.is_staff):
+        return HttpResponseForbidden(_("Cette clameur n'est pas la vôtre."))
+
+    if capsule.statut == StatutCapsule.PUBLIEE:
+        capsule.statut = StatutCapsule.RETIREE
+        capsule.save(update_fields=["statut"])
+        logger.info("clameur %s retiree", capsule.uuid)
+
+    return redirect("capsules:lire_capsule", uuid=capsule.uuid)
+
+
+@staff_member_required
+@require_POST
+def reimprimer_capsule(request, uuid):
+    """Remet un ticket en file. Reserve au personnel.
+
+    POURQUOI PAS L'AUTEUR. Le QR de l'affiche se photographie et la page
+    s'ouvre depuis n'importe ou : un bouton d'impression a portee du public
+    viderait le rouleau au milieu d'un evenement. L'operateur est sur place,
+    il voit le papier sortir et sait s'il en reste.
+    / A public print button would empty the roll mid-event; the operator is
+      there and can see the paper.
+
+    ON CREE UN JOB, ON NE REJOUE PAS L'ANCIEN. Le garde de `envoyer_le_ticket`
+    refuse de renvoyer un job deja `envoye` — a raison, c'est ce qui protege
+    des redeliveries de Celery. Une nouvelle demande merite donc sa propre
+    ligne, avec son propre numero de commande Sunmi.
+    / A new job, not a replay: the task refuses to resend a sent one, and Sunmi
+      needs a fresh trade_no.
+    """
+    from impression.models import JobImpression
+
+    capsule = get_object_or_404(Capsule, uuid=uuid)
+    job = JobImpression.objects.create(capsule=capsule, reglages=capsule.reglages)
+
+    # Meme filet qu'a la publication : Redis peut etre mort, le job attend
+    # alors une relance depuis la console. / Same net as publishing.
+    transaction.on_commit(
+        lambda: _enfiler_le_ticket(job.pk)
+    )
+    logger.info("second ticket demande pour %s (job %s)", capsule.uuid, job.pk)
+    return redirect("capsules:lire_capsule", uuid=capsule.uuid)
+
+
+def _enfiler_le_ticket(job_pk: int) -> None:
+    from impression.tasks import envoyer_le_ticket
+
+    try:
+        envoyer_le_ticket.delay(job_pk)
+    except Exception:
+        logger.exception("enqueue du ticket %s impossible — relance depuis la console", job_pk)
 
 
 @require_POST
@@ -490,7 +634,7 @@ def decrire_une_clameur(capsule) -> dict:
         "x": round(capsule.position_x or 0.5, 4),
         "y": round(capsule.position_y or 0.5, 4),
         "teinte": _teinte_de_la_capsule(capsule),
-        "segments": _colorer_les_voix(
+        "segments": preparer_les_paroles(
             (capsule.transcription_raw or {}).get("segments") or []
         ),
     }

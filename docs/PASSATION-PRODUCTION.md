@@ -260,6 +260,18 @@ docker compose -f docker-compose-prod.yml exec web \
   python manage.py purger_les_brouillons --pour-de-vrai
 ```
 
+**Le numéro de commande Sunmi porte l'identifiant du job**, pas seulement
+l'UUID de la capsule. Sunmi déduplique sur ce numéro : c'est ce qui empêche
+Celery d'imprimer deux fois en redélivrant une tâche interrompue. Avec l'UUID
+seul, un second ticket de la même clameur portait le même numéro, Sunmi
+l'ignorait, et le job passait quand même à « envoyé » — papier vierge, aucune
+alerte. Ne reviens pas en arrière là-dessus sans relire `sunmi_cloud.py`.
+
+**La session des visiteurs dure six mois** (`SESSION_COOKIE_AGE`), et glisse à
+chaque visite. C'est le seul lien entre une personne et la clameur qu'elle a
+déposée : c'est lui qui lui permet de la retirer. La raccourcir prive les
+auteurs de ce droit sans le leur dire.
+
 **La console** (`/admin/`) porte le retrait immédiat d'une capsule — le moyen
 technique de l'obligation de retrait prompt de la LCEN —, la relance d'un
 ticket, et le rejeu de l'enrichissement.
