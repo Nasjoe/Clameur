@@ -98,12 +98,13 @@ def test_un_echec_de_transcription_laisse_la_capsule_publiee(capsule_a_transcrir
 
 
 @pytest.mark.django_db
-def test_l_embedding_ne_depend_pas_de_l_extraction_des_tags(capsule_a_transcrire):
-    """C'est l'embedding qui donne son étoile à la clameur. L'enchaîner derrière
-    l'extraction de mots-clés — l'étape la plus fragile — faisait dépendre sa
-    présence même sur la page d'accueil de la réussite de celle-ci.
-    / The embedding is what gives a clameur its star; it must not hang behind
-      the most brittle step of the chain."""
+def test_l_embedding_ne_part_plus_derriere_la_transcription(capsule_a_transcrire):
+    """L'embedding est EN SOMMEIL depuis le 2026-09-01, avec la constellation.
+
+    La tâche existe toujours et se rejoue depuis la console, mais plus rien ne
+    l'enfile : publier une clameur ne déclenche aucun calcul de proximité.
+    / Dormant since the constellation was shelved: the task remains, nothing
+      queues it."""
     lances = []
     with patch("capsules.tasks.transcrire_le_fichier", return_value=TRANSCRIPTION), \
          patch("capsules.tasks.diffuser_la_transcription"), \
@@ -111,8 +112,8 @@ def test_l_embedding_ne_depend_pas_de_l_extraction_des_tags(capsule_a_transcrire
          patch.object(embarquer, "delay", lambda u: lances.append("embarquer")):
         transcrire(str(capsule_a_transcrire.uuid))
 
-    assert set(lances) == {"taguer", "embarquer"}, (
-        "les deux suites doivent partir de transcrire, en parallèle"
+    assert lances == ["taguer"], (
+        "seule l'extraction du titre et des mots-clés suit la transcription"
     )
 
 
@@ -123,7 +124,7 @@ def test_les_tags_du_modele_sont_marques_comme_tels(capsule_a_transcrire):
     capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
     capsule_a_transcrire.save()
 
-    with patch("capsules.tasks._appeler_le_modele_de_tags", return_value=["rue", "pluie"]):
+    with patch("capsules.tasks._appeler_le_modele", return_value=("", ["rue", "pluie"])):
         assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
 
     origines = {
@@ -138,7 +139,7 @@ def test_un_echec_de_tags_laisse_la_capsule_publiee(capsule_a_transcrire):
     capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
     capsule_a_transcrire.save()
 
-    with patch("capsules.tasks._appeler_le_modele_de_tags", side_effect=ValueError("JSON illisible")):
+    with patch("capsules.tasks._appeler_le_modele", side_effect=ValueError("JSON illisible")):
         assert taguer(str(capsule_a_transcrire.uuid)) == "echec"
 
     capsule_a_transcrire.refresh_from_db()
@@ -217,7 +218,7 @@ def test_les_mots_cles_survivent_a_une_reponse_en_objet_json():
     / The model returns an object, never the requested array; iterating it
       yields the keys, so every capsule got a single tag named "mots-clés".
     """
-    from capsules.tasks import _appeler_le_modele_de_tags
+    from capsules.tasks import _appeler_le_modele
 
     with patch(
         "mistralai.client.Mistral",
@@ -225,19 +226,21 @@ def test_les_mots_cles_survivent_a_une_reponse_en_objet_json():
             '```json\n{"mots-clés": ["boulangerie", "fermeture", "nostalgie"]}\n```'
         ),
     ):
-        assert _appeler_le_modele_de_tags("peu importe") == [
-            "boulangerie", "fermeture", "nostalgie",
-        ]
+        _titre, mots = _appeler_le_modele("peu importe")
+
+    assert mots == ["boulangerie", "fermeture", "nostalgie"]
 
 
 def test_les_mots_cles_acceptent_aussi_le_tableau_nu():
     """L'autre forme reste valable : le jour où le modèle obéit, rien ne casse.
     / The obedient form must keep working."""
-    from capsules.tasks import _appeler_le_modele_de_tags
+    from capsules.tasks import _appeler_le_modele
 
     with patch("mistralai.client.Mistral",
                _client_qui_repond('["rue", "pluie", "marché"]')):
-        assert _appeler_le_modele_de_tags("peu importe") == ["rue", "pluie", "marché"]
+        _titre, mots = _appeler_le_modele("peu importe")
+
+    assert mots == ["rue", "pluie", "marché"]
 
 
 def test_une_reponse_sans_aucune_liste_est_un_echec_visible():
@@ -249,12 +252,12 @@ def test_une_reponse_sans_aucune_liste_est_un_echec_visible():
     `erreur_enrichissement`, que l'opérateur voit et peut rejouer.
     / An empty list would report success and lose the keywords in silence.
     """
-    from capsules.tasks import _appeler_le_modele_de_tags
+    from capsules.tasks import _appeler_le_modele
 
     with patch("mistralai.client.Mistral",
                _client_qui_repond('{"resultat": "je ne sais pas"}')), \
          pytest.raises(ValueError):
-        _appeler_le_modele_de_tags("peu importe")
+        _appeler_le_modele("peu importe")
 
 
 def test_on_demande_au_modele_un_objet_json():
@@ -263,12 +266,12 @@ def test_on_demande_au_modele_un_objet_json():
     et sur ses balises de code, et le nettoyage redevient la seule défense.
     / We don't merely tolerate the object shape, we ask for it.
     """
-    from capsules.tasks import _appeler_le_modele_de_tags
+    from capsules.tasks import _appeler_le_modele
 
     fabrique = _client_qui_repond('{"tags": ["rue", "pluie", "marché"]}')
     client = fabrique()
     with patch("mistralai.client.Mistral", lambda **_: client):
-        _appeler_le_modele_de_tags("peu importe")
+        _appeler_le_modele("peu importe")
 
     appel = client.chat.complete.call_args.kwargs
     assert appel["response_format"] == {"type": "json_object"}
@@ -288,7 +291,7 @@ def test_un_tagage_reussi_efface_l_erreur_de_tagage(capsule_a_transcrire):
     capsule_a_transcrire.erreur_enrichissement = "Extraction des tags : JSON illisible"
     capsule_a_transcrire.save()
 
-    with patch("capsules.tasks._appeler_le_modele_de_tags", return_value=["rue"]):
+    with patch("capsules.tasks._appeler_le_modele", return_value=("", ["rue"])):
         assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
 
     capsule_a_transcrire.refresh_from_db()
@@ -307,7 +310,7 @@ def test_un_tagage_reussi_ne_masque_pas_l_echec_D_UNE_AUTRE_ETAPE(capsule_a_tran
     capsule_a_transcrire.erreur_enrichissement = "Embedding : 512 dimensions au lieu de 1024"
     capsule_a_transcrire.save()
 
-    with patch("capsules.tasks._appeler_le_modele_de_tags", return_value=["rue"]):
+    with patch("capsules.tasks._appeler_le_modele", return_value=("", ["rue"])):
         assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
 
     capsule_a_transcrire.refresh_from_db()
@@ -342,3 +345,45 @@ def test_un_embedding_reussi_ne_masque_pas_l_echec_des_tags(capsule_a_transcrire
     assert capsule_a_transcrire.erreur_enrichissement.startswith("Extraction des tags"), (
         "l'échec des tags a été effacé par la réussite de l'embedding"
     )
+
+
+@pytest.mark.django_db
+def test_le_titre_arrive_avec_les_mots_cles(capsule_a_transcrire):
+    """Un titre, dans le MEME appel que les mots-clés : ni étape, ni coût de
+    plus. C'est ce titre que la liste affiche en premier.
+    / One call for both: no extra step, no extra cost."""
+    capsule_a_transcrire.transcription_texte = TRANSCRIPTION["texte"]
+    capsule_a_transcrire.save()
+
+    with patch("capsules.tasks._appeler_le_modele",
+               return_value=("La boulangerie ferme", ["boulangerie", "quartier"])):
+        assert taguer(str(capsule_a_transcrire.uuid)) == "ok"
+
+    capsule_a_transcrire.refresh_from_db()
+    assert capsule_a_transcrire.titre == "La boulangerie ferme"
+
+
+def test_le_titre_se_lit_dans_la_reponse_du_modele():
+    from capsules.tasks import _appeler_le_modele
+
+    with patch("mistralai.client.Mistral", _client_qui_repond(
+        '{"titre": "La boulangerie ferme", "tags": ["boulangerie", "fermeture"]}'
+    )):
+        titre, mots = _appeler_le_modele("peu importe")
+
+    assert titre == "La boulangerie ferme"
+    assert mots == ["boulangerie", "fermeture"]
+
+
+def test_un_titre_absent_n_empeche_pas_les_mots_cles():
+    """Le titre est un confort, les mots-clés sont la matière de la recherche :
+    l'un ne doit pas emporter l'autre.
+    / The title is a comfort; the keywords feed the search."""
+    from capsules.tasks import _appeler_le_modele
+
+    with patch("mistralai.client.Mistral",
+               _client_qui_repond('{"tags": ["rue", "pluie"]}')):
+        titre, mots = _appeler_le_modele("peu importe")
+
+    assert titre == ""
+    assert mots == ["rue", "pluie"]

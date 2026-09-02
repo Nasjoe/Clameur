@@ -19,8 +19,8 @@
       </div>
     </details>
   {% elif capsule.erreur_enrichissement %}
-    {# Le detail de l'erreur reste en console : il contient des chemins
-       internes et des messages de bibliotheques. #}
+    {% comment %} Le detail de l'erreur reste en console : il contient des chemins
+       internes et des messages de bibliotheques. {% endcomment %}
     <p class="attente">{% translate "Transcription indisponible." %}</p>
   {% else %}
     <!-- La fiche s'affiche SANS ATTENDRE la transcription. Le texte arrivera

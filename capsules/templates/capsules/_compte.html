@@ -1,0 +1,12 @@
+{% load i18n %}
+{% comment %} `oob` ajoute hx-swap-oob : le compteur vit dans l'en-tete, hors de ce que
+   HTMX remplace, et resterait donc a « 101 clameurs » au-dessus d'un seul
+   resultat. Il voyage avec les resultats, comme les transcriptions.
+   / The counter lives outside the swapped fragment, so it travels out-of-band. {% endcomment %}
+<p class="compte" id="compte"{% if oob %} hx-swap-oob="true"{% endif %}>
+  {% if recherche %}
+    {% blocktranslate count n=nombre %}Une clameur trouvée.{% plural %}{{ n }} clameurs trouvées.{% endblocktranslate %}
+  {% else %}
+    {% blocktranslate count n=nombre %}Une clameur, à écouter.{% plural %}{{ n }} clameurs, à écouter.{% endblocktranslate %}
+  {% endif %}
+</p>

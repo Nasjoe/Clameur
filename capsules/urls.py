@@ -5,10 +5,10 @@ from capsules import views
 app_name = "capsules"
 
 urlpatterns = [
-    # La constellation EST la page d'accueil : c'est elle qu'on montre a
-    # quelqu'un a qui l'on parle du projet, et elle donne acces au reste.
-    # / The constellation is the home page.
-    path("", views.constellation, name="constellation"),
+    # LA LISTE EST LA PAGE D'ACCUEIL. C'etait la constellation jusqu'au
+    # 2026-09-01 ; elle est en sommeil, et sa vue n'est plus routee.
+    # / The list is the home page; the constellation view is dormant.
+    path("", views.liste, name="liste"),
 
     # L'adresse ou l'on depose une clameur. Une seule, puisqu'il n'y a qu'un
     # lieu : elle tient dans une phrase et s'encode dans le QR de l'affiche.

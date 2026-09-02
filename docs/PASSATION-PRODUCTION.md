@@ -234,27 +234,22 @@ le texte est coupé sur les bords, change la valeur dans les `Réglages`.
 L'affiche à imprimer, avec son QR, est sur `/affiche` — réservée au
 personnel, `Ctrl+P`, A4, marges « aucune », arrière-plans activés.
 
-**Après chaque vague d'enrichissement**, recalcule le ciel :
+**Le ciel est en sommeil depuis le 2026-09-01.** La page d'accueil est la
+liste des clameurs, avec sa recherche ; elle ne dépend d'aucun calcul, et une
+clameur y figure dès sa publication. Il n'y a donc plus rien à recalculer après
+une vague d'enrichissement.
+
+La commande reste là pour le jour où le ciel reviendra, et elle fonctionne
+encore sur les vecteurs déjà en base :
 
 ```bash
 docker compose -f docker-compose-prod.yml exec web \
   python manage.py projeter_la_constellation
 ```
 
-Une projection est **globale** : une nouvelle clameur déplace toutes les
-autres. La commande affiche ce qui compte — **la part des étoiles dont la plus
-proche voisine à l'écran est vraiment l'une de leurs clameurs les plus proches
-par le sens**. Sur cent clameurs enrichies pour de vrai, elle est de 99 %. Sous
-50 %, la commande le dit : le ciel ne tient plus dans deux dimensions.
-
-Elle projette par **t-SNE**, écrit en numpy dans la commande elle-même — pas de
-`scikit-learn`, toujours absent volontairement. La PCA occupait cette place
-jusqu'au 2026-08-31 ; mesurée sur de vrais vecteurs `mistral-embed`, elle
-plaçait la clameur dans le bon quartier mais à côté de la mauvaise voisine
-(environ 77 % contre 99 %). **N'utilise pas la variance expliquée comme signal** : elle
-valait 18,5 % sur les fixtures, où la séparation est parfaite, et 9,7 % sur de
-vraies clameurs. Elle monte quand le problème devient facile, et c'est pour
-cela qu'elle a été retirée de l'affichage.
+Mais **plus rien ne calcule de nouveaux vecteurs** : la tâche `embarquer` n'est
+plus enfilée derrière la transcription. Seules la transcription, le titre et
+les mots-clés partent en tâche de fond.
 
 **En fin d'événement**, purge les enregistrements jamais publiés :
 
@@ -306,8 +301,8 @@ plus rien. Un cron qui échoue en silence, c'est un backup qui n'existe pas.
 | Lecteur audio bloqué à `0:00 / 0:00` | type MIME du `.m4a`, puis les requêtes `Range` (§5 d–e) |
 | Les transcriptions n'arrivent plus en direct | daphne redémarré depuis la dernière modification des consumers ? |
 | Aucun ticket ne sort | `SUNMI_APP_ID` / `SUNMI_APP_KEY` présents ? Sinon le backend de simulation prend la main et écrit dans les journaux. |
-| Capsules publiées mais jamais enrichies | `MISTRAL_API_KEY`, puis `docker compose logs celery` |
-| Le ciel est vide | `projeter_la_constellation` a-t-il tourné ? Une capsule sans position n'a pas d'étoile. |
+| Capsules publiées mais sans titre ni transcription | `MISTRAL_API_KEY`, puis `docker compose logs celery` |
+| Une clameur publiée n'apparaît pas sur l'accueil | Est-elle bien `publiee` et non `retiree` ? La liste ne dépend de rien d'autre. |
 | borgwarehouse a envoyé un mail : plus de sauvegarde | `cd sauvegarde && make check`, puis `crontab -l` |
 | Une page se comporte comme une version antérieure | le volume `statiques` n'a pas été rafraîchi : vérifie que `entrypoint-prod.sh` s'exécute bien au démarrage (`docker compose logs web \| head`) |
 

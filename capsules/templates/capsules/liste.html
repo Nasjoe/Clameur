@@ -1,0 +1,237 @@
+{% extends "base.html" %}
+{% load i18n static %}
+
+{% block titre %}{% translate "Les clameurs" %}{% endblock %}
+
+{% block og_titre %}{% translate "Les clameurs" %}{% endblock %}
+{# Le cas zero merite sa phrase : « 0 clameurs deposees » sonne comme une panne. #}
+{% block og_description %}{% if nombre_en_tout %}{% blocktranslate count n=nombre_en_tout %}Une clameur déposée, à écouter.{% plural %}{{ n }} clameurs déposées, à écouter.{% endblocktranslate %}{% else %}{% translate "Aucune clameur encore. La première reste à déposer." %}{% endif %}{% endblock %}
+
+{% block styles %}
+<style>
+  /* Une seule colonne, centree. `base.html` cale deja `main` a 38rem : la
+     liste respire un peu plus large, parce qu'une fiche porte un lecteur et
+     une ligne de mots-cles en plus de son texte.
+     / One centred column, slightly wider than the reading default. */
+  main { max-width: 46rem; }
+
+  .entete { margin-bottom: var(--space-lg); }
+  .entete h1 {
+    font-size: var(--text-2xl); margin: 0 0 var(--space-2xs);
+    text-wrap: balance;
+  }
+  .compte { color: var(--color-ink-doux); font-size: var(--text-md);
+            font-variant-numeric: tabular-nums; }
+
+  /* --- La recherche ---------------------------------------------------- */
+  .chercher { position: relative; margin-bottom: var(--space-lg); }
+  .chercher input {
+    width: 100%; padding: var(--space-sm) var(--space-md);
+    padding-left: 2.6rem;
+    background: var(--color-paper-2); color: var(--color-ink);
+    border: 1px solid var(--color-trait);
+    border-radius: var(--radius-pilule);
+    font: inherit; font-size: var(--text-lg);
+    transition: border-color var(--dur-court) var(--ease-out),
+                background var(--dur-court) var(--ease-out);
+  }
+  .chercher input::placeholder { color: var(--color-ink-tenu); }
+  .chercher input:focus-visible {
+    outline: none; background: var(--color-paper-3);
+    border-color: var(--color-focus);
+  }
+  .chercher svg {
+    position: absolute; left: var(--space-md); top: 50%;
+    transform: translateY(-50%);
+    width: 1.1rem; height: 1.1rem; color: var(--color-ink-tenu);
+    pointer-events: none;
+  }
+  /* L'indicateur d'attente de HTMX : il n'apparait que si la reponse tarde,
+     sinon il clignoterait a chaque frappe.
+     / Only shows if the answer is slow; otherwise it would blink constantly. */
+  .chercher .attente {
+    position: absolute; right: var(--space-md); top: 50%;
+    transform: translateY(-50%);
+    color: var(--color-ink-tenu); font-size: var(--text-sm);
+    opacity: 0; transition: opacity var(--dur-moyen) var(--ease-out);
+  }
+  .chercher .attente.htmx-request { opacity: 1; }
+
+  /* --- La fiche --------------------------------------------------------
+     Sobre au repos. LA PORTE — l'ombre dure du projet — est reservee aux
+     actions : la donner a cinquante fiches d'un coup la banaliserait.
+     / The project's hard shadow stays for actions, not for every card. --- */
+  .clameur {
+    position: relative;
+    display: block; padding: var(--space-md);
+    border: 1px solid var(--color-trait);
+    /* Rayon concentrique : l'exterieur vaut l'interieur plus le padding. */
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-sm);
+    background: var(--color-paper-2);
+    transition: background var(--dur-court) var(--ease-out),
+                border-color var(--dur-court) var(--ease-out);
+  }
+  .clameur:hover { background: var(--color-paper-3); border-color: var(--astre-sourd); }
+
+  .clameur-tete {
+    display: flex; gap: var(--space-sm); align-items: baseline;
+    /* De la place pour le bouton de partage, qui vit dans le coin. */
+    padding-right: 2.5rem;
+    text-decoration: none; color: inherit;
+  }
+  .clameur-tete:hover .clameur-nom { text-decoration: underline;
+                                     text-underline-offset: 3px; }
+  .pastille-liste {
+    flex: none; width: 0.6rem; height: 0.6rem; border-radius: 50%;
+    background: var(--astre); transform: translateY(-1px);
+  }
+  .clameur-nom {
+    font-family: var(--font-display); font-size: var(--text-lg);
+    font-weight: 600; text-wrap: balance;
+  }
+  .clameur-meta {
+    display: block; color: var(--color-ink-doux); font-size: var(--text-sm);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .puits-lecteur { margin-top: var(--space-sm); }
+  .lecteur-de-fiche { width: 100%; height: 2.2rem; }
+
+  /* --- Le partage ------------------------------------------------------ */
+  .partager {
+    position: absolute; top: var(--space-sm); right: var(--space-sm);
+    display: inline-flex; align-items: center; gap: var(--space-2xs);
+    padding: var(--space-2xs) var(--space-xs);
+    background: transparent; border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-ink-tenu); cursor: pointer;
+    transition: color var(--dur-court) var(--ease-out),
+                background var(--dur-court) var(--ease-out);
+  }
+  .partager svg { width: 1.05rem; height: 1.05rem; }
+  .partager:hover { color: var(--color-ink); background: var(--color-paper-3); }
+  .partager:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  .partager-dit { font-size: var(--text-xs); white-space: nowrap; }
+  .partager.dit { color: var(--color-ambre); }
+
+  /* --- L'invitation ---------------------------------------------------- */
+  .invitation {
+    border: none; border-radius: var(--radius-lg);
+    background: var(--color-paper-2); color: var(--color-ink);
+    padding: var(--space-xl); max-width: 22rem; text-align: center;
+    box-shadow: var(--porte-decalage) var(--porte-decalage) 0 var(--color-braise-ombre);
+  }
+  .invitation::backdrop { background: var(--color-voile); }
+  .invitation h2 { font-size: var(--text-2xl); margin: 0 0 var(--space-2xs);
+                   text-wrap: balance; }
+  .invitation-qr {
+    background: var(--color-ink); border-radius: var(--radius-md);
+    padding: var(--space-sm); margin: var(--space-md) auto;
+    width: fit-content;
+  }
+  .invitation-qr svg { display: block; width: 11rem; height: 11rem; }
+  .invitation-url {
+    font-family: var(--font-mono); font-size: var(--text-sm);
+    color: var(--color-ink-doux); margin: 0 0 var(--space-md);
+    word-break: break-all;
+  }
+
+  .rien { color: var(--color-ink-doux); padding: var(--space-xl) 0;
+          text-align: center; text-wrap: balance; }
+
+  /* Sur un telephone, la fiche prend toute la largeur et le bouton de partage
+     reste atteignable au pouce. / Full width on a phone. */
+  @media (max-width: 34rem) {
+    .clameur { padding: var(--space-sm); border-radius: var(--radius-md); }
+    .chercher input { font-size: var(--text-md); }
+  }
+</style>
+{% endblock %}
+
+{% block contenu %}
+<header class="entete">
+  <h1>{% translate "Les clameurs" %}</h1>
+  {% include "capsules/_compte.html" %}
+</header>
+
+{% if invitation %}
+  <p style="margin-bottom: var(--space-lg)">
+    <button type="button" class="porte porte--pleine porte--large" id="bouton-inviter">
+      {% translate "Enregistrer une nouvelle clameur" %}
+    </button>
+  </p>
+
+  <dialog class="invitation" id="dialogue-invitation">
+    <h2>{% translate "Dépose ta clameur" %}</h2>
+    <p class="doux">
+      {% translate "Scanne avec ton téléphone : c'est lui qui enregistre." %}
+    </p>
+    <div class="invitation-qr">{{ invitation.qr_svg|safe }}</div>
+    <p class="invitation-url">{{ invitation.url }}</p>
+
+    {% comment %}
+      Le QR sert au visiteur qui vient AVEC son téléphone. Celui qui lit la
+      page DEPUIS son téléphone n'a rien à scanner : il lui faut un lien.
+      / The QR serves whoever arrives with a phone; whoever reads this ON a
+        phone needs a link instead.
+    {% endcomment %}
+    <p style="margin: 0 0 var(--space-sm)">
+      <a class="porte porte--pleine porte--large" href="{{ invitation.chemin }}">
+        {% translate "Enregistrer avec cet appareil" %}
+      </a>
+    </p>
+
+    <button type="button" class="porte porte--fantome porte--large" id="fermer-invitation">
+      {% translate "Fermer" %}
+    </button>
+  </dialog>
+{% endif %}
+
+<form class="chercher" role="search" action="{% url 'capsules:liste' %}" method="get">
+  <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+    <circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/>
+    <path d="m20 20-3.5-3.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+  </svg>
+  {% comment %} `delay` laisse finir le mot avant d'interroger le serveur ; `push-url`
+     met la recherche dans la barre d'adresse, donc elle se partage et se
+     recharge. Le formulaire fonctionne sans JavaScript : c'est un GET.
+     / The plain form works without JS; HTMX only makes it live. {% endcomment %}
+  <input type="search" name="q" value="{{ recherche }}"
+         placeholder="{% translate 'Chercher un mot, un nom, un thème…' %}"
+         aria-label="{% translate 'Chercher parmi les clameurs' %}"
+         hx-get="{% url 'capsules:liste' %}"
+         hx-trigger="input changed delay:300ms, search"
+         hx-target="#resultats"
+         hx-push-url="true"
+         hx-indicator=".chercher .attente">
+  <span class="attente">{% translate "…" %}</span>
+</form>
+
+{% comment %} Le WebSocket vit SUR LE PARENT, jamais sur ce que HTMX remplace : une
+   transcription qui arrive pendant une recherche couperait sinon la
+   connexion. / The socket lives on the parent, not on what HTMX swaps. {% endcomment %}
+<div hx-ext="ws" ws-connect="/ws/constellation">
+  <div id="resultats">
+    {% include "capsules/_resultats.html" %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'capsules/vendor/htmx-2.0.6.min.js' %}" defer></script>
+<script src="{% static 'capsules/vendor/htmx-ext-ws.js' %}" defer></script>
+<script src="{% static 'capsules/partage.js' %}" defer></script>
+<script>
+  // Le dialogue natif : quatre lignes suffisent, et `showModal` apporte le
+  // voile, le piege au clavier et la fermeture par Echap.
+  // / The native dialog brings the backdrop, focus trap and Escape for free.
+  const dialogue = document.getElementById("dialogue-invitation");
+  const ouvrir = document.getElementById("bouton-inviter");
+  if (dialogue && ouvrir) {
+    ouvrir.addEventListener("click", () => dialogue.showModal());
+    document.getElementById("fermer-invitation")
+            .addEventListener("click", () => dialogue.close());
+  }
+</script>
+{% endblock %}

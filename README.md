@@ -19,30 +19,40 @@ Affiche (QR fixe)  →  /nouvelle   ←  le téléphone du visiteur
    ↓ il parle, il se réécoute, il choisit un pseudo et deux mots-clés
    ↓ publier
    ├─→ un ticket sort de l'imprimante thermique posée à côté
-   └─→ transcription, mots-clés et vecteur, en tâche de fond
+   └─→ transcription, titre et mots-clés, en tâche de fond
 Le ticket porte le QR de /c/<uuid>  →  la page d'écoute
 ```
 
 Le visiteur enregistre **avec son propre téléphone** : la borne n'est qu'une
 affiche et une imprimante. Pas de micro à nettoyer, pas d'écran à protéger.
 
-## La constellation
+## La liste
 
-La page d'accueil montre les clameurs deux fois, côte à côte : une liste à
-gauche, un ciel à droite. Chaque étoile est une capsule, placée par proximité
-**sémantique** — deux clameurs voisines parlent de la même chose.
+La page d'accueil est **la liste des clameurs**, la plus récente d'abord, en une
+colonne centrée qui se lit aussi bien sur un téléphone que sur un écran large.
+Une clameur y figure **dès sa publication** : la page ne dépend d'aucun calcul.
 
-Cliquer une étoile fait défiler la liste jusqu'à sa fiche et lance la lecture ;
-cliquer une fiche illumine son étoile.
+Un champ de recherche cherche dans les titres, les pseudos, les mots-clés et
+les transcriptions. La requête vit dans l'adresse — `/?q=boulangerie` se
+partage et se recharge — et la liste se met à jour sans rechargement.
 
-Les positions sont **calculées une fois et stockées**. Une projection est
-globale : la recalculer à chaque visite déplacerait toutes les étoiles, et on
-ne pourrait plus revenir à une clameur repérée la veille.
+Chaque clameur porte un bouton qui copie son lien : c'est ce lien-là qu'on
+envoie à quelqu'un, celui du ticket.
 
-`make constellation` les recalcule par t-SNE — écrit en numpy dans la commande,
-aucune dépendance de plus — et annonce la seule mesure qui engage le ciel : la part
-des étoiles dont la voisine à l'écran est vraiment une voisine par le sens.
-Elle est de 99 % sur un corpus enrichi pour de vrai.
+Le **titre** est écrit par la machine, dans le même appel qui extrait les
+mots-clés : rien de plus à saisir avant de publier, et rien de plus à payer.
+
+### Le ciel, en sommeil
+
+La page d'accueil montrait un second écran : un ciel où chaque étoile était une
+clameur, placée par proximité sémantique. **Il est en sommeil depuis le
+2026-09-01** — la projection et les vecteurs coûtaient du calcul pour une vue
+dont l'usage restait à prouver, et une clameur fraîchement publiée n'y
+apparaissait pas avant un recalcul lancé à la main.
+
+Rien n'a été supprimé : `constellation.html`, son JavaScript, la tâche
+`embarquer` et la commande `make constellation` sont intacts, simplement plus
+appelés. Les vecteurs déjà calculés dorment en base.
 
 ## Trois invariants
 
@@ -98,9 +108,9 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make start` | lance la pile, selon `DEBUG` |
 | `make journaux` · `make arreter` | suivre, arrêter |
 | `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
-| `make test` | les 133 tests |
+| `make test` | les 149 tests |
 | `make lint` | style du code |
-| `make constellation` | recalcule les positions du ciel |
+| `make constellation` | recalcule les positions du ciel — **en sommeil** |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
 | `make verifier` | contrôle la configuration de déploiement |
 | `make console` | crée un compte opérateur |
@@ -113,12 +123,13 @@ Trois applications Django.
 | | |
 |---|---|
 | `bornes` | Les `Réglages` du lieu, en un seul exemplaire : quelle imprimante, quel papier, quel texte d'accueil, ouvert ou fermé. |
-| `capsules` | Le cœur : modèles, capture, lecture, constellation, enrichissement, WebSocket. |
+| `capsules` | Le cœur : modèles, capture, lecture, liste et recherche, enrichissement, WebSocket. |
 | `impression` | Pilote Sunmi et file de tickets, isolés pour être testables sans matériel. |
 
 **Stack** — Django 6, Celery, Channels, HTMX, JavaScript vanilla, PostgreSQL +
 pgvector, Redis, ffmpeg, Mistral (Voxtral pour la transcription diarisée,
-`mistral-embed` pour les vecteurs), imprimante Sunmi Cloud en mode push.
+`mistral-small` pour le titre et les mots-clés), imprimante Sunmi Cloud en mode
+push. `mistral-embed` et pgvector ne servent plus qu'au ciel en sommeil.
 
 En production : Traefik → nginx → gunicorn, avec daphne pour les WebSocket,
 le tout tenu par supervisord. Voir [`docs/PASSATION-PRODUCTION.md`](docs/PASSATION-PRODUCTION.md).

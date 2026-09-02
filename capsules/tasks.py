@@ -17,6 +17,7 @@ from capsules.transcription import transcrire_le_fichier
 logger = logging.getLogger(__name__)
 
 NOMBRE_DE_TAGS_MACHINE = 3
+MOTS_DU_TITRE = 6
 
 # LES TROIS ETAPES PARTAGENT UN SEUL CHAMP D'ERREUR, et le nom de l'etape est
 # ce qui permet de savoir a laquelle appartient le message qui s'y trouve. Ce
@@ -106,21 +107,26 @@ def transcrire(uuid_capsule: str) -> str:
     # / Deferred to commit: broadcasting earlier could push uncommitted text.
     transaction.on_commit(lambda: diffuser_la_transcription(capsule))
 
-    # LES DEUX SUITES PARTENT D'ICI, EN PARALLELE, ET C'EST VOLONTAIRE.
-    # Enchainer `embarquer` derriere `taguer` faisait dependre la presence meme
-    # de la clameur sur la page d'accueil — liste ET ciel — de la reussite
-    # d'une extraction de mots-cles, l'etape la plus fragile de la chaine : il
-    # suffisait que le modele entoure son JSON de balises de code pour que la
-    # capsule reste invisible a jamais.
-    # / Chaining the embedding behind tagging made the capsule's very presence
-    #   on the home page depend on the most brittle step of the chain.
+    # UNE SEULE SUITE DEPUIS LE 2026-09-01 : le titre et les mots-cles.
+    # `embarquer` partait aussi d'ici, en parallele. Il est EN SOMMEIL avec la
+    # constellation : la tache existe toujours et se rejoue depuis la console,
+    # mais publier une clameur ne declenche plus aucun calcul de proximite.
+    # La liste ne depend d'aucun vecteur — une clameur y figure des sa
+    # publication, ce que le ciel ne savait pas faire.
+    # / One follow-up since the constellation was shelved. `embarquer` still
+    #   exists and can be replayed, but nothing queues it: the list needs no
+    #   vector, so a clameur appears the moment it is published.
     _enfiler(taguer, uuid_capsule)
-    _enfiler(embarquer, uuid_capsule)
     return "ok"
 
 
-def _appeler_le_modele_de_tags(texte: str) -> list[str]:
-    """Demande des mots-clés au modèle et rend une liste de chaînes.
+def _appeler_le_modele(texte: str) -> tuple[str, list[str]]:
+    """Demande un titre et des mots-clés au modèle. Rend (titre, mots).
+
+    UN SEUL APPEL POUR LES DEUX. Le titre se déduit de la même transcription
+    que les mots-clés, par le même modèle : en demander un second coûterait
+    une requête et une attente de plus pour un texte de six mots.
+    / One call for both: a second request for six words would be waste.
 
     LE MODELE ENTOURE SOUVENT SON JSON DE BALISES DE CODE, même quand on lui
     demande de n'en pas mettre. Sans ce nettoyage, `json.loads` lève et la
@@ -150,9 +156,12 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
             {
                 "role": "user",
                 "content": (
-                    f"Donne exactement {NOMBRE_DE_TAGS_MACHINE} mots-clés en "
-                    "français décrivant ce témoignage. Réponds uniquement par "
-                    'un objet JSON de la forme {"tags": ["…"]}, sans commentaire.'
+                    "Voici un témoignage enregistré dans la rue. Donne-lui un "
+                    f"titre court — {MOTS_DU_TITRE} mots au plus, sans point "
+                    "final — et exactement "
+                    f"{NOMBRE_DE_TAGS_MACHINE} mots-clés, le tout en français. "
+                    'Réponds uniquement par un objet JSON de la forme '
+                    '{"titre": "…", "tags": ["…"]}, sans commentaire.'
                     "\n\n"
                     f"{texte[:4000]}"
                 ),
@@ -165,10 +174,13 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
         brut = brut.split("```")[1] if "```" in brut[3:] else brut[3:]
         brut = brut.removeprefix("json").strip()
     valeur = json.loads(brut)
+    titre = ""
     if isinstance(valeur, dict):
         # La premiere valeur qui est une liste, quel que soit le nom de la cle :
         # le modele l'appelle tantot « tags », tantot « mots-clés », tantot
-        # « mots_clés ». / Whatever the key is called.
+        # « mots_clés ». Le titre, lui, est la premiere chaine.
+        # / Whatever the keys are called.
+        titre = next((v for v in valeur.values() if isinstance(v, str)), "")
         valeur = next((v for v in valeur.values() if isinstance(v, list)), [])
     elif not isinstance(valeur, list):
         valeur = []
@@ -181,7 +193,11 @@ def _appeler_le_modele_de_tags(texte: str) -> list[str]:
         # la console et se rejoue.
         # / Raise, never return an empty list: that was the silent failure.
         raise ValueError(f"aucun mot-clé dans la réponse du modèle : {brut[:200]}")
-    return [str(mot) for mot in valeur]
+    # LE TITRE EST UN CONFORT, LES MOTS-CLES SONT LA MATIERE DE LA RECHERCHE.
+    # Un titre manquant ne doit pas emporter les mots-cles avec lui : la fiche
+    # retombe alors sur le pseudo, et rien n'est perdu.
+    # / A missing title must not take the keywords down with it.
+    return str(titre).strip()[:120], [str(mot) for mot in valeur]
 
 
 @shared_task
@@ -191,10 +207,17 @@ def taguer(uuid_capsule: str) -> str:
         return "rien a taguer"
 
     try:
-        mots = _appeler_le_modele_de_tags(capsule.transcription_texte)
+        titre, mots = _appeler_le_modele(capsule.transcription_texte)
     except Exception as erreur:
         _noter_l_echec(capsule, ETAPE_TAGS, erreur)
         return "echec"
+
+    if titre:
+        # `update_fields`, pour la meme raison que dans `transcrire` : l'appel
+        # a dure, et un save complet reecrirait un etat perime.
+        # / update_fields: the call took time, a full save would rewrite stale state.
+        capsule.titre = titre
+        capsule.save(update_fields=["titre"])
 
     for mot in [str(m).strip().lower()[:60] for m in mots][:NOMBRE_DE_TAGS_MACHINE]:
         if not mot:

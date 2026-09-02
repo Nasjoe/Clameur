@@ -38,6 +38,17 @@ class Capsule(models.Model):
         verbose_name=_("réglages"),
     )
     pseudo = models.CharField(max_length=80, blank=True, verbose_name=_("pseudo"))
+
+    # ECRIT PAR LA MACHINE, JAMAIS PAR LE VISITEUR. Le titre est deduit de la
+    # transcription par le meme appel qui extrait les mots-cles : il n'ajoute
+    # ni etape, ni cout, ni champ a remplir avant de publier. Vide tant que
+    # l'enrichissement n'a pas eu lieu — la fiche montre alors le pseudo.
+    # / Written by the machine in the same call that extracts the keywords: no
+    #   extra step, no extra cost, nothing more to fill in before publishing.
+    titre = models.CharField(
+        max_length=120, blank=True, verbose_name=_("titre"),
+        help_text=_("Déduit de la transcription par le modèle."),
+    )
     statut = models.CharField(
         max_length=20, choices=StatutCapsule.choices,
         default=StatutCapsule.BROUILLON, verbose_name=_("statut"),

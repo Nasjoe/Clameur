@@ -146,7 +146,9 @@ def test_sans_photo_la_clameur_partage_l_image_par_defaut(client, capsule_publie
 
 
 @pytest.mark.django_db
-def test_la_constellation_annonce_le_nombre_de_clameurs(client, corpus_pret):
+def test_l_accueil_annonce_le_nombre_de_clameurs(client, corpus_pret):
+    """L'accueil est la liste depuis le 2026-09-01 ; le ciel est en sommeil.
+    / The home page is the list; the sky is dormant."""
     metas = metadonnees(client.get("/").content.decode())
-    assert "constellation" in metas["og:title"][0].lower()
+    assert "clameurs" in metas["og:title"][0].lower()
     assert re.search(r"\d+ clameurs", metas["og:description"][0])

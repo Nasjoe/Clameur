@@ -1,0 +1,22 @@
+{% load i18n %}
+{% comment %} Le compteur voyage avec les resultats, en swap OOB : il vit dans
+   l'en-tete, hors de ce que HTMX remplace. SEULEMENT POUR HTMX : au chargement
+   direct, la page inclut deja ce fragment ET son en-tete, et le compteur
+   sortait deux fois.
+   / Out-of-band, and only for HTMX: on a direct load the page already has the
+     header, and the counter appeared twice. {% endcomment %}
+{% if pour_htmx %}{% include "capsules/_compte.html" with oob=True %}{% endif %}
+{% comment %} Le fragment que HTMX remplace a chaque frappe. Il ne porte NI en-tete NI
+   champ de recherche : les renvoyer les imbriquerait dans les premiers.
+   / The fragment HTMX swaps in: no header, no search field. {% endcomment %}
+{% for clameur in clameurs %}
+  {% include "capsules/_fiche.html" %}
+{% empty %}
+  <p class="rien">
+    {% if recherche %}
+      {% blocktranslate %}Aucune clameur ne répond à « {{ recherche }} ».{% endblocktranslate %}
+    {% else %}
+      {% translate "Aucune clameur pour l'instant. La première reste à déposer." %}
+    {% endif %}
+  </p>
+{% endfor %}

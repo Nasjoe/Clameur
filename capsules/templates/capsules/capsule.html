@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block titre %}{% translate "Une clameur" %}{% endblock %}
 
@@ -55,6 +55,27 @@
   }
   .puits-lecteur audio { width: 100%; height: 36px; display: block; color-scheme: dark; }
 
+  .scene { position: relative; }
+  /* De la place pour le bouton de partage, qui vit dans le coin : un titre
+     long passerait sinon dessous. / Room for the corner button. */
+  .scene h1 { padding-right: 2.5rem; }
+
+  .partager {
+    position: absolute; top: 0; right: 0;
+    display: inline-flex; align-items: center; gap: var(--space-2xs);
+    padding: var(--space-2xs) var(--space-xs);
+    background: transparent; border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--color-ink-tenu); cursor: pointer;
+    transition: color var(--dur-court) var(--ease-out),
+                background var(--dur-court) var(--ease-out);
+  }
+  .partager svg { width: 1.05rem; height: 1.05rem; }
+  .partager:hover { color: var(--color-ink); background: var(--color-paper-2); }
+  .partager:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+  .partager-dit { font-size: var(--text-xs); white-space: nowrap; }
+  .partager.dit { color: var(--color-ambre); }
+
   .parole {
     margin: 0 0 var(--space-sm); padding-left: var(--space-sm);
     border-left: 2px solid var(--voix);
@@ -68,12 +89,31 @@
 
 {% block contenu %}
 <div class="scene">
+  <!-- Le meme bouton que sur les fiches de la liste. Ici le lien est celui de
+       la page ouverte : c'est le geste de « je veux envoyer ca a quelqu'un ».
+       / Same button as on the cards; here it shares the open page. -->
+  <button type="button" class="partager"
+          data-partager="{{ url_publique }}{% url 'capsules:lire_capsule' capsule.uuid %}"
+          aria-label="{% translate 'Copier le lien de cette clameur' %}"
+          title="{% translate 'Copier le lien' %}"
+          data-merci="{% translate 'Lien copié' %}"
+          data-echec="{% translate 'Copie refusée' %}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="partager-dit" aria-live="polite"></span>
+  </button>
+
   {% if capsule.photo %}
     <img class="portrait" src="{{ capsule.photo.url }}" alt="">
   {% endif %}
 
   <div>
-    <h1>{{ capsule.pseudo|default:_("Anonyme") }}</h1>
+    <h1>{% if capsule.titre %}{{ capsule.titre }}{% else %}{{ capsule.pseudo|default:_("Anonyme") }}{% endif %}</h1>
+    {% if capsule.titre and capsule.pseudo %}<p class="doux">{{ capsule.pseudo }}</p>{% endif %}
     {% comment %}Duree annoncee AVANT la lecture : on ne trahit pas le temps du passant.{% endcomment %}
     <p class="doux">{{ duree }}</p>
   </div>
@@ -107,7 +147,7 @@
     </section>
   {% endif %}
   <p style="margin-top:.5rem">
-    <a class="porte porte--fantome porte--large" href="{% url 'capsules:constellation' %}">
+    <a class="porte porte--fantome porte--large" href="{% url 'capsules:liste' %}">
       {% translate "Découvrir les autres clameurs" %}
     </a>
   </p>
@@ -115,6 +155,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="{% static 'capsules/partage.js' %}" defer></script>
 <script>
   // L'ecoute est comptee AU CLIC, jamais au chargement : c'est la seule mesure
   // qui dise si les passants ecoutent vraiment.

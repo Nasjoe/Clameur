@@ -9,7 +9,7 @@ from django.contrib.admin.views.decorators import staff_member_required
 from django.contrib.staticfiles.storage import staticfiles_storage
 from django.core.cache import cache
 from django.db import transaction
-from django.db.models import F
+from django.db.models import F, Q
 from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -31,6 +31,11 @@ NOMBRE_MAX_DE_TAGS = 2
 # constellation n'est pas un moteur de recherche : c'est une vue d'ensemble.
 # / Beyond this the sky is unreadable; it is an overview, not a search engine.
 PLAFOND_CONSTELLATION = 600
+
+# Au-dela, la page devient trop lourde a charger d'un coup. La recherche est
+# la pour retrouver ce qui n'est plus a l'ecran.
+# / Beyond this the page is too heavy; search is what finds the rest.
+PLAFOND_DE_LA_LISTE = 600
 
 # Une journee. Au-dela, la valeur est forgee : on la ramene sans refuser
 # l'enregistrement, qui lui est bien reel.
@@ -247,7 +252,7 @@ def lire_capsule(request, uuid):
             "segments": _colorer_les_voix(
                 (capsule.transcription_raw or {}).get("segments") or []
             ),
-            "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
+            "tags": _mots_cles(capsule),
             "duree": _duree_lisible(capsule.duree_secondes),
         },
     )
@@ -337,6 +342,75 @@ def affiche(request):
 
 
 @require_GET
+def liste(request):
+    """`/` — toutes les clameurs, la plus récente d'abord, et une recherche.
+
+    LA LISTE NE DEPEND D'AUCUN VECTEUR, et c'est tout l'intérêt du changement.
+    Le ciel n'affichait que les clameurs déjà projetées : une clameur publiée
+    pendant un événement restait invisible jusqu'au prochain recalcul, lancé à
+    la main. Ici elle est là dès sa publication.
+    / The list needs no vector: a clameur appears the moment it is published,
+      where the sky waited for a manual projection.
+    """
+    recherche = (request.GET.get("q") or "").strip()
+
+    capsules = Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+    if recherche:
+        # UN `icontains`, PAS UN INDEX PLEIN TEXTE. Quelques centaines de
+        # clameurs tiennent dans un balayage sans qu'on le sente, et une
+        # recherche plein texte demanderait un index, une migration et un
+        # vocabulaire de langue — pour un corpus qui tient dans une salle.
+        # / A scan is instant at this size; full-text would cost an index, a
+        #   migration and a language configuration for a room-sized corpus.
+        capsules = capsules.filter(
+            Q(titre__icontains=recherche)
+            | Q(pseudo__icontains=recherche)
+            | Q(transcription_texte__icontains=recherche)
+            | Q(tags_de_capsule__tag__nom__icontains=recherche)
+        # `distinct` : sans lui, une clameur dont DEUX mots-cles correspondent
+        # revient deux fois — la jointure la duplique.
+        # / Without distinct, two matching tags return the row twice.
+        ).distinct()
+
+    capsules = (
+        capsules.prefetch_related("tags_de_capsule__tag")
+        .order_by("-publiee_le")[:PLAFOND_DE_LA_LISTE]
+    )
+    clameurs = [decrire_une_clameur(capsule) for capsule in capsules]
+
+    # HTMX ne remplace que la liste : lui renvoyer la page entiere imbriquerait
+    # un second en-tete et un second champ de recherche dans le premier.
+    # / HTMX swaps the list alone; a whole page would nest a second header.
+    pour_htmx = bool(request.headers.get("HX-Request"))
+    gabarit = "capsules/_resultats.html" if pour_htmx else "capsules/liste.html"
+    return render(
+        request,
+        gabarit,
+        {
+            "clameurs": clameurs,
+            "nombre": len(clameurs),
+            # LE CORPUS ENTIER, ET NON CE QUE LA RECHERCHE A RETENU. C'est lui
+            # que la description de partage annonce : « /?q=zzzz » partage tel
+            # quel disait « aucune clameur encore » a son destinataire, alors
+            # que le site en porte cent.
+            # / The whole corpus, not the search result: an empty search used
+            #   to tell the recipient the project had not started.
+            "nombre_en_tout": Capsule.objects.filter(
+                statut=StatutCapsule.PUBLIEE
+            ).count(),
+            "recherche": recherche,
+            "invitation": invitation_a_enregistrer(request),
+            "pour_htmx": pour_htmx,
+        },
+    )
+
+
+# EN SOMMEIL DEPUIS LE 2026-09-01, avec la constellation. La vue n'est plus
+# routee : `/` rend la liste. On la garde entiere, elle et son gabarit, son
+# JavaScript et la commande `projeter_la_constellation`, pour le jour ou le
+# ciel reviendra. Rien ne l'appelle.
+# / Dormant since the constellation was shelved: no longer routed, kept whole.
+@require_GET
 def constellation(request):
     """Les deux ecrans : la liste et le ciel, synchronises.
 
@@ -409,17 +483,32 @@ def decrire_une_clameur(capsule) -> dict:
     / Everything the card and the star need."""
     return {
         "capsule": capsule,
-        "tags": [lien.tag.nom for lien in capsule.tags_de_capsule.all()],
+        "tags": _mots_cles(capsule),
         "duree": _duree_lisible(capsule.duree_secondes),
         "audio": capsule.audio_a_servir.url if capsule.audio_a_servir else "",
         "type_mime": capsule.type_mime_a_servir,
         "x": round(capsule.position_x or 0.5, 4),
         "y": round(capsule.position_y or 0.5, 4),
-        "teinte": _teinte_de_la_position(capsule.position_x or 0.5, capsule.position_y or 0.5),
+        "teinte": _teinte_de_la_capsule(capsule),
         "segments": _colorer_les_voix(
             (capsule.transcription_raw or {}).get("segments") or []
         ),
     }
+
+
+def _mots_cles(capsule) -> list[str]:
+    """Les mots-cles a lire, sans doublon et dans l'ordre d'ajout.
+
+    L'auteur ecrit « quartier », le modele trouve « quartier » : la fiche
+    affichait « · quartier · quartier ». Les deux origines restent distinctes
+    en base — elles ne se melangent jamais, c'est le §10 de la spec — mais la
+    ligne qu'on lit, elle, ne repete pas. `dict.fromkeys` dedoublonne sans
+    perdre l'ordre. / Deduplicated for reading only; the two origins stay
+    separate in the database.
+    """
+    return list(dict.fromkeys(
+        lien.tag.nom for lien in capsule.tags_de_capsule.all()
+    ))
 
 
 def _duree_lisible(secondes: int) -> str:
@@ -453,6 +542,21 @@ def _qr_avec_viewbox(url: str) -> str:
     return svg.replace(
         "<svg ", f'<svg viewBox="0 0 {cote} {cote}" ', 1
     )
+
+
+def _teinte_de_la_capsule(capsule) -> int:
+    """La teinte d'une fiche, tiree de son UUID.
+
+    Elle derivait de la position dans le ciel : sans ciel, toutes les fiches
+    prenaient la meme couleur. L'UUID ne change jamais, donc une clameur garde
+    sa teinte d'une visite a l'autre, et le corpus reste bariole dans l'arc
+    chaud du projet.
+    / It came from the position in the sky; the UUID keeps each card's hue
+      stable across visits and the corpus varied.
+    """
+    if capsule.position_x is not None and capsule.position_y is not None:
+        return _teinte_de_la_position(capsule.position_x, capsule.position_y)
+    return int(TEINTE_DEPART + capsule.uuid.int % ETENDUE_DES_TEINTES) % 360
 
 
 def _teinte_de_la_position(x: float, y: float) -> int:

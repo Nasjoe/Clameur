@@ -11,14 +11,38 @@
        (Aucun exemple chiffre dans ce commentaire : il serait relu par le test
        qui verifie justement l'absence de virgule dans les positions.)
        / Without it the French locale uses decimal commas and every star is NaN. -->
-  <button type="button" class="clameur-tete" data-choisir="{{ clameur.capsule.uuid }}">
+  <!-- UN LIEN, PAS UN BOUTON : dans une liste, cliquer le nom d'une clameur
+       doit mener a la clameur. Le `data-choisir` reste pour le ciel, en
+       sommeil, qui s'y raccrochait pour illuminer l'etoile correspondante.
+       / A link, not a button: clicking a clameur's name must open it. -->
+  <a class="clameur-tete" href="{% url 'capsules:lire_capsule' clameur.capsule.uuid %}"
+     data-choisir="{{ clameur.capsule.uuid }}">
     <span class="pastille-liste" aria-hidden="true"></span>
     <span>
-      <span class="clameur-nom">{{ clameur.capsule.pseudo|default:_("Anonyme") }}</span>
+      <span class="clameur-nom">{% if clameur.capsule.titre %}{{ clameur.capsule.titre }}{% else %}{{ clameur.capsule.pseudo|default:_("Anonyme") }}{% endif %}</span>
       <span class="clameur-meta">
+        {% if clameur.capsule.titre and clameur.capsule.pseudo %}· {{ clameur.capsule.pseudo }}{% endif %}
         · {{ clameur.duree }}{% for tag in clameur.tags %} · {{ tag }}{% endfor %}
       </span>
     </span>
+  </a>
+
+  <!-- Le lien est ABSOLU : il part dans une conversation, un carnet, un mur.
+       `url_publique` vient du processeur de contexte, comme pour og:url.
+       / Absolute on purpose: this link leaves the site. -->
+  <button type="button" class="partager"
+          data-partager="{{ url_publique }}{% url 'capsules:lire_capsule' clameur.capsule.uuid %}"
+          aria-label="{% translate 'Copier le lien de cette clameur' %}"
+          title="{% translate 'Copier le lien' %}"
+          data-merci="{% translate 'Lien copié' %}"
+          data-echec="{% translate 'Copie refusée' %}">
+    <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+      <path d="M10 13a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07l-1.5 1.5"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path d="M14 11a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07l1.5-1.5"
+            fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+    <span class="partager-dit" aria-live="polite"></span>
   </button>
 
   <!-- preload="none" est indispensable : cent lecteurs qui chargeraient leurs

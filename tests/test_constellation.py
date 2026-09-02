@@ -32,38 +32,6 @@ def test_les_positions_ne_bougent_pas_sans_nouvelle_clameur(corpus_projete):
     assert avant == apres
 
 
-def test_la_page_rend_les_fiches_cote_serveur(client, corpus_projete):
-    """La liste est rendue par Django, et non construite en JavaScript : c'est
-    la condition pour que HTMX puisse y remplacer une transcription par swap
-    OOB quand elle arrive.
-    / Server-rendered so HTMX has something to OOB-swap into."""
-    reponse = client.get("/")
-    assert reponse.status_code == 200
-    contenu = reponse.content.decode()
-
-    assert contenu.count('class="clameur"') == corpus_projete.count()
-    assert "lecteur-de-fiche" in contenu, "pas de lecteur audio dans les fiches"
-    assert 'ws-connect="/ws/constellation"' in contenu, "pas de connexion temps réel"
-    for capsule in corpus_projete:
-        assert f'id="transcription-{capsule.uuid}"' in contenu
-
-
-@pytest.mark.django_db
-def test_une_clameur_sans_position_n_apparait_pas(client, capsule_publiee):
-    """Une capsule non encore projetée n'a pas d'étoile : l'afficher en (0,0)
-    créerait un amas fantôme dans un coin du ciel."""
-    contenu = client.get("/").content.decode()
-    assert str(capsule_publiee.uuid) not in contenu
-
-
-def test_une_clameur_retiree_disparait_du_ciel(client, corpus_projete):
-    retiree = corpus_projete.first()
-    retiree.statut = StatutCapsule.RETIREE
-    retiree.save()
-    contenu = client.get("/").content.decode()
-    assert str(retiree.uuid) not in contenu, "le kill switch ne vide pas le ciel"
-
-
 def _ecart_circulaire(a: int, b: int) -> int:
     """L'écart entre deux teintes sur la roue chromatique.
 
@@ -118,100 +86,6 @@ def test_la_projection_refuse_de_travailler_sur_trop_peu(db, reglages):
     call_command("projeter_la_constellation", verbosity=0)
 
     assert not Capsule.objects.exclude(position_x=None).exists()
-
-
-def test_l_accueil_est_la_constellation(client, corpus_projete):
-    """C'est la page qu'on montre a quelqu'un a qui l'on parle du projet."""
-    reponse = client.get("/")
-    assert reponse.status_code == 200
-    assert "La constellation" in reponse.content.decode()
-
-
-def test_l_invitation_porte_le_qr_de_la_borne_active(client, corpus_projete):
-    """Un visiteur sur ordinateur ne peut pas enregistrer sur place : il lui
-    faut son telephone, donc un QR.
-
-    La reglages vient du corpus : la fixture `reglages` en creerait une seconde avec
-    le meme slug. / The reglages comes from the corpus fixture.
-    """
-    from django.core.cache import cache
-
-    from bornes.models import Reglages
-
-    cache.clear()
-    assert Reglages.objects.filter(active=True).exists()
-    contenu = client.get("/").content.decode()
-
-    assert "Enregistrer une nouvelle clameur" in contenu
-    assert "<svg" in contenu, "pas de QR dans l'invitation"
-    # L'invitation vise l'adresse courte, pas le slug de la reglages : c'est elle
-    # qu'on encode dans le QR et qu'on dit à voix haute.
-    assert "/nouvelle" in contenu
-
-
-@pytest.mark.django_db
-def test_lieu_ferme_aucune_invitation_n_est_proposee(client, corpus_projete):
-    """Proposer d'enregistrer quand aucune reglages n'ecoute serait une promesse
-    en l'air. / Offering to record with no open reglages would be an empty promise."""
-    from django.core.cache import cache
-
-    from bornes.models import Reglages
-
-    reglages = Reglages.get_solo()
-    reglages.active = False
-    reglages.save()
-    cache.clear()
-
-    contenu = client.get("/").content.decode()
-    assert "Enregistrer une nouvelle clameur" not in contenu
-
-
-@pytest.mark.django_db
-def test_l_adresse_courte_mene_a_la_page_d_enregistrement(client, corpus_projete):
-    """`/nouvelle` tient dans une phrase qu'on dit à voix haute, contrairement
-    à `/b/<slug>`. C'est elle qu'on encode dans le QR."""
-    from django.core.cache import cache
-
-    cache.clear()
-    reponse = client.get("/nouvelle")
-    assert reponse.status_code == 200
-    assert "Dépose une clameur" in reponse.content.decode()
-
-    contenu = client.get("/").content.decode()
-    assert 'href="/nouvelle"' in contenu, "l'invitation doit mener à l'adresse courte"
-    assert "Enregistrer avec cet appareil" in contenu
-
-
-@pytest.mark.django_db
-def test_lieu_ferme_l_adresse_courte_explique(client, corpus_projete):
-    from django.core.cache import cache
-
-    from bornes.models import Reglages
-
-    reglages = Reglages.get_solo()
-    reglages.active = False
-    reglages.save()
-    cache.clear()
-
-    # La page reste accessible mais refuse les enregistrements : un visiteur
-    # qui scanne un QR encore colle merite une explication, pas un 404.
-    # / The page stays reachable and explains, rather than 404ing a live QR.
-    contenu = client.get("/nouvelle").content.decode()
-    assert "fermés" in contenu
-
-
-@pytest.mark.django_db
-def test_le_qr_porte_un_viewbox(client, corpus_projete):
-    """Segno n'en émet aucun : le canevas s'étirait sans que le dessin suive,
-    et le code se retrouvait tassé dans un coin de la modale.
-    / Segno emits none, so the drawing stayed put while the canvas stretched."""
-    from django.core.cache import cache
-
-    cache.clear()
-    contenu = client.get("/").content.decode()
-    assert 'class="segno"' in contenu
-    debut = contenu.index('class="segno"') - 400
-    assert "viewBox" in contenu[debut:debut + 500], "le QR ne se mettra pas à l'échelle"
 
 
 # ------------------------------------------- ce que la carte dit vraiment
