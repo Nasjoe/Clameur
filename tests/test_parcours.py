@@ -2,6 +2,7 @@
 
 import pytest
 from django.core.cache import cache
+from django.urls import reverse
 
 from capsules.models import Capsule, StatutCapsule
 from tests.conftest import un_fichier_audio, un_vrai_wav
@@ -274,11 +275,78 @@ def test_deux_repliques_de_suite_du_meme_locuteur_n_en_font_qu_une():
 
 
 def test_une_seule_voix_garde_une_seule_couleur():
+    """Deux paragraphes séparés par une vraie pause, mais une seule teinte :
+    la couleur dit qui parle, et c'est toujours la même personne.
+    / Two paragraphs, one hue: the colour says who speaks."""
     from capsules.views import preparer_les_paroles
 
     paroles = preparer_les_paroles([
         {"speaker": "voix", "start": 0, "end": 1, "text": "Un."},
         {"speaker": "voix", "start": 2, "end": 3, "text": "Deux."},
     ])
-    assert len(paroles) == 1
-    assert paroles[0]["speaker"] == "Voix 1"
+    assert len({p["couleur"] for p in paroles}) == 1
+    assert all(not p["speaker"] for p in paroles)
+
+
+@pytest.mark.django_db
+def test_l_ecran_de_fin_propose_les_trois_suites(client, reglages):
+    """« Ton ticket sort » n'est pas un cul-de-sac.
+
+    Trois suites, dans cet ordre : écouter ce qu'on vient de déposer, aller
+    voir celles des autres, ou recommencer. La deuxième manquait — on repartait
+    sans jamais savoir que le corpus existait.
+    / Three ways on: listen, browse, record again. The middle one was missing.
+    """
+    page = client.get(reverse("capsules:nouvelle")).content.decode()
+    fin = page[page.index('id="etape-fin"'):]
+
+    # `reverse("capsules:liste")` vaut « / » : le chercher tel quel serait vrai
+    # dans n'importe quelle balise fermante. On vise l'attribut.
+    # / Searching for "/" alone would match every closing tag.
+    assert "Écouter ma clameur" in fin
+    assert f'href="{reverse("capsules:liste")}"' in fin, (
+        "aucun chemin vers les autres clameurs"
+    )
+    assert "Déposer une autre clameur" in fin
+
+
+def test_une_seule_voix_ne_porte_aucune_etiquette():
+    """UNE ETIQUETTE QUI NE DISTINGUE RIEN EST DU BRUIT. Quand une seule
+    personne parle, « Voix 1 » revient à chaque paragraphe pour ne rien
+    apprendre : le lecteur voit cinq fois le même mot au lieu du texte.
+    / A label that distinguishes nothing is noise."""
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "speaker_1", "start": 0, "end": 3, "text": "Je me souviendrai toujours."},
+        {"speaker": "speaker_1", "start": 8, "end": 12, "text": "C'était un chouette moment."},
+    ])
+    assert all(not p["speaker"] for p in paroles), "une voix seule n'a pas à se nommer"
+
+
+def test_une_longue_pause_ouvre_un_paragraphe_meme_pour_la_meme_voix():
+    """Tout fusionner en un bloc donnerait un mur de texte. Voxtral coupe au
+    silence : un souffle au milieu d'une phrase se recolle, une vraie pause
+    reste une respiration pour l'œil.
+    / Merging everything would give a wall of text; a real pause stays a break."""
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "speaker_1", "start": 0.0, "end": 3.0, "text": "Quatre heures de marche,"},
+        {"speaker": "speaker_1", "start": 3.4, "end": 5.0, "text": "en grimpant."},
+        {"speaker": "speaker_1", "start": 9.0, "end": 12.0, "text": "Voilà, c'était une belle journée."},
+    ])
+    assert len(paroles) == 2
+    assert paroles[0]["text"] == "Quatre heures de marche, en grimpant."
+    assert paroles[1]["text"] == "Voilà, c'était une belle journée."
+
+
+def test_l_etiquette_revient_a_chaque_changement_de_voix():
+    from capsules.views import preparer_les_paroles
+
+    paroles = preparer_les_paroles([
+        {"speaker": "a", "start": 0, "end": 1, "text": "Un."},
+        {"speaker": "b", "start": 1, "end": 2, "text": "Deux."},
+        {"speaker": "a", "start": 2, "end": 3, "text": "Trois."},
+    ])
+    assert [p["speaker"] for p in paroles] == ["Voix 1", "Voix 2", "Voix 1"]

@@ -110,10 +110,18 @@
                      text-wrap: balance; }
   .confirmation form { margin: var(--space-md) 0 var(--space-sm); }
 
+  /* L'ESPACE ENTRE LES PAROLES EST CE QUI LES REND LISIBLES. Elles
+     s'enchainent parfois par dizaines : sans air entre elles, la
+     transcription devient un bloc gris qu'on ne lit pas.
+     / They come by the dozen; without air between them nobody reads them. */
   .parole {
-    margin: 0 0 var(--space-sm); padding-left: var(--space-sm);
+    margin: 0 0 var(--space-md); padding-left: var(--space-md);
     border-left: 2px solid var(--voix);
+    line-height: 1.6;
   }
+  /* Deux paroles de la meme voix se suivent : le trait continue, l'espace
+     marque la pause. / Same voice, continued: the rule carries on. */
+  .parole + .parole { margin-top: calc(var(--space-md) * -0.35); }
   .locuteur {
     font-size: var(--text-xs); font-weight: 600; text-transform: uppercase;
     letter-spacing: var(--tracking-label); color: var(--voix);
@@ -175,7 +183,7 @@
       <h3 class="etiquette" style="margin-bottom:var(--space-sm)">{% translate "Ce qui est dit" %}</h3>
       {% for segment in segments %}
         <p class="parole" style="--voix: {{ segment.couleur }}">
-          <span class="locuteur">{{ segment.speaker }}</span><br>{{ segment.text }}
+          {% if segment.speaker %}<span class="locuteur">{{ segment.speaker }}</span><br>{% endif %}{{ segment.text }}
         </p>
       {% endfor %}
     </section>

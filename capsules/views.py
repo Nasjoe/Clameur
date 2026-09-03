@@ -68,6 +68,15 @@ ECHELLE_DU_QR = 8
 # donnerait deux teintes differentes a la meme personne qui parle deux fois :
 # la transcription deviendrait illisible au lieu d'aider.
 # / One colour per speaker, not per segment.
+# AU-DELA D'UNE SECONDE, C'EST UNE PAUSE ; EN DECA, UN SOUFFLE. Voxtral coupe
+# au silence, pas au tour de parole : quelqu'un qui respire au milieu d'une
+# phrase produit deux segments, qu'il faut recoller. Mais tout recoller
+# donnerait un mur de texte d'un seul tenant — une vraie pause reste une
+# respiration pour l'oeil.
+# / Voxtral splits on silence: a breath mid-sentence must be glued back, a real
+#   pause must remain a paragraph break.
+SILENCE_QUI_SEPARE = 1.0
+
 COULEURS_DES_VOIX = [
     "oklch(0.73 0.15 38)",   # terracotta
     "oklch(0.83 0.13 78)",   # ambre
@@ -330,20 +339,37 @@ def preparer_les_paroles(segments):
         numero = numero_du_locuteur[locuteur]
 
         texte = (segment.get("text") or "").strip()
-        if paroles and paroles[-1]["_locuteur"] == locuteur:
-            precedente = paroles[-1]
+        precedente = paroles[-1] if paroles else None
+        meme_voix = precedente is not None and precedente["_locuteur"] == locuteur
+        souffle = (
+            meme_voix
+            and (segment.get("start") or 0) - (precedente["end"] or 0) < SILENCE_QUI_SEPARE
+        )
+        if souffle:
             precedente["text"] = f"{precedente['text']} {texte}".strip()
             precedente["end"] = segment.get("end")
             continue
 
         paroles.append({
             "_locuteur": locuteur,
-            "speaker": _("Voix %(numero)s") % {"numero": numero},
+            # L'etiquette ne sert qu'a DISTINGUER : on ne la pose qu'au
+            # changement de voix. Elle est retiree apres coup s'il n'y en a
+            # eu qu'une (voir plus bas).
+            # / The label only serves to tell voices apart.
+            "speaker": "" if meme_voix else _("Voix %(numero)s") % {"numero": numero},
             "start": segment.get("start"),
             "end": segment.get("end"),
             "text": texte,
             "couleur": COULEURS_DES_VOIX[(numero - 1) % len(COULEURS_DES_VOIX)],
         })
+
+    # UNE ETIQUETTE QUI NE DISTINGUE RIEN EST DU BRUIT. Quand une seule
+    # personne parle, « Voix 1 » revient a chaque paragraphe pour ne rien
+    # apprendre : le lecteur voit cinq fois le meme mot au lieu du texte.
+    # / A label that distinguishes nothing is noise.
+    if len(numero_du_locuteur) < 2:
+        for parole in paroles:
+            parole["speaker"] = ""
     return paroles
 
 

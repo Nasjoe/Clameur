@@ -13,7 +13,7 @@
       <div class="paroles">
         {% for segment in segments %}
           <p class="parole" style="--voix: {{ segment.couleur }}">
-            <span class="locuteur">{{ segment.speaker }}</span><br>{{ segment.text }}
+            {% if segment.speaker %}<span class="locuteur">{{ segment.speaker }}</span><br>{% endif %}{{ segment.text }}
           </p>
         {% endfor %}
       </div>

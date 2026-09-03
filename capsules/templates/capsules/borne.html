@@ -94,8 +94,19 @@
 <section id="etape-fin" class="etape" hidden>
   <h1>{% translate "Ton ticket sort." %}</h1>
   <p class="doux">{% translate "Prends-le, et colle-le où tu veux." %}</p>
+  {% comment %}
+    TROIS SUITES, ET UNE SEULE EN AMBRE. Ce qu'on vient de deposer passe
+    devant : c'est la voix qu'on veut se reecouter, et le lien qu'on montrera.
+    Le reste suit, en retrait — un ecran de fin n'est pas un carrefour de
+    boutons egaux, sinon plus rien ne guide.
+    « Voir toutes les clameurs » manquait : on repartait avec son ticket sans
+    jamais savoir qu'il y avait un corpus derriere.
+    / Three ways on, one accent: what you just recorded comes first, the rest
+      follows in retreat. The middle one was missing entirely.
+  {% endcomment %}
   <p><a class="porte porte--ambre porte--large" id="lien-capsule" href="#">{% translate "Écouter ma clameur" %}</a></p>
-  <p><a class="doux" href="{% url 'capsules:nouvelle' %}">{% translate "Déposer une autre clameur" %}</a></p>
+  <p><a class="porte porte--large" href="{% url 'capsules:liste' %}">{% translate "Voir toutes les clameurs" %}</a></p>
+  <p><a class="porte porte--fantome porte--large" href="{% url 'capsules:nouvelle' %}">{% translate "Déposer une autre clameur" %}</a></p>
 </section>
 
 {% endif %}
