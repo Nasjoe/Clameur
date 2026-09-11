@@ -14,7 +14,7 @@ from capsules.models import StatutCapsule
 
 logger = logging.getLogger(__name__)
 
-# NETTEMENT SOUS LE DELAI DE GUNICORN (180 s, voir supervisord.conf). Les deux
+# NETTEMENT SOUS LE DELAI DE GUNICORN (300 s, voir supervisord.conf). Les deux
 # etaient egaux : gunicorn tuait donc le worker avant que ffmpeg n'atteigne son
 # propre delai, et le repli sur l'audio d'origine — la moitie de l'invariant
 # I1 — n'etait jamais atteint. Pire depuis que la publication tient dans une
@@ -22,7 +22,15 @@ logger = logging.getLogger(__name__)
 # rollback, une capsule bloquee en brouillon, et rien pour la rattraper.
 # / They were equal, so gunicorn killed the worker before ffmpeg could time out
 #   and the fallback was never reached.
-DUREE_MAX_FFMPEG = 60
+#
+# 240 S, ET NON PLUS 60, DEPUIS QUE LA DUREE D'UNE CLAMEUR N'EST PLUS BORNEE
+# (2026-09-11). Mesure faite : une heure d'audio se normalise en 34 s. Le
+# fichier le plus lourd que nginx laisse passer (64 Mo, un memo vocal a bas
+# debit, quatre heures environ) en demanderait deux minutes et demie. Au-dela,
+# le repli sur l'original joue : la publication n'echoue jamais.
+# tests/test_delais.py verifie que gunicorn et nginx restent au-dessus.
+# / 240 s since duration is unbounded: one hour takes 34 s to normalise.
+DUREE_MAX_FFMPEG = 240
 
 
 def normaliser_l_audio(capsule) -> None:

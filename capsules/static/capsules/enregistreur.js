@@ -8,6 +8,10 @@
  *  - l'audio part des l'arret, avant la saisie du pseudo : le temps de frappe
  *    sert a l'upload, et rien n'est perdu si l'onglet se ferme.
  * / Playback from the local blob; upload starts as soon as recording stops.
+ *
+ * DEUX SOURCES, UN SEUL PARCOURS : le micro, ou un fichier audio deja pret.
+ * Les deux aboutissent a `accueillirLAudio`, et tout ce qui suit est commun.
+ * / Two sources, one path: both end in accueillirLAudio.
  */
 
 (function () {
@@ -31,10 +35,11 @@
   let enregistreur = null;
   let morceaux = [];
   let blobLocal = null;
+  let nomDuFichier = "";
+  let dureeAnnoncee = 0;
   let uuidCapsule = null;
   let debutEnMs = 0;
   let minuterieChrono = null;
-  let minuterieGardeFou = null;
 
   function montrer(nom) {
     Object.entries(ecran).forEach(([cle, section]) => {
@@ -74,46 +79,70 @@
     };
     enregistreur.onstop = () => {
       flux.getTracks().forEach((piste) => piste.stop());
-      blobLocal = new Blob(morceaux, { type: enregistreur.mimeType });
-      document.getElementById("reecoute").src = URL.createObjectURL(blobLocal);
-      montrer("formulaire");
-      envoyerLAudio();
+      const blob = new Blob(morceaux, { type: enregistreur.mimeType });
+      accueillirLAudio(blob, `capsule.${extensionDuType(blob.type)}`, secondesEcoulees());
     };
 
+    // PAS DE DUREE MAXIMALE, retiree le 2026-09-11 : elle coupait les longues
+    // clameurs. C'est le visiteur qui arrete ; le plafond reel est la taille
+    // acceptee par nginx, verifiee avant l'envoi.
+    // / No maximum duration: the visitor stops; nginx's size cap is the limit.
     enregistreur.start();
     debutEnMs = Date.now();
     montrer("enregistrement");
     rafraichirChrono();
     minuterieChrono = setInterval(rafraichirChrono, 1000);
-
-    // Garde-fou technique contre l'enregistrement oublie en poche. Le serveur,
-    // lui, accepte ce qui lui arrive : on ne detruit jamais une voix.
-    // / Technical guard only; the server still accepts what it receives.
-    minuterieGardeFou = setTimeout(arreter, config.dureeMaxSecondes * 1000);
   }
 
   function arreter() {
     clearInterval(minuterieChrono);
-    clearTimeout(minuterieGardeFou);
     if (enregistreur && enregistreur.state === "recording") enregistreur.stop();
   }
 
-  function extensionDuBlob() {
-    const type = (blobLocal.type || "").toLowerCase();
-    if (type.includes("mp4") || type.includes("aac")) return "m4a";
-    if (type.includes("ogg")) return "ogg";
+  function choisirUnFichier(evenement) {
+    const fichier = evenement.target.files[0];
+    if (!fichier) return;
+    // La duree d'un fichier, le serveur la mesure (ffprobe) a la publication :
+    // annoncer 0, c'est le laisser faire. Aucun chronometre n'a tourne ici.
+    // / The server measures a file's duration; no stopwatch ran here.
+    accueillirLAudio(fichier, fichier.name, 0);
+  }
+
+  function accueillirLAudio(blob, nom, duree) {
+    blobLocal = blob;
+    nomDuFichier = nom;
+    dureeAnnoncee = duree;
+    document.getElementById("reecoute").src = URL.createObjectURL(blobLocal);
+    montrer("formulaire");
+    envoyerLAudio();
+  }
+
+  function extensionDuType(type) {
+    const minuscules = (type || "").toLowerCase();
+    if (minuscules.includes("mp4") || minuscules.includes("aac")) return "m4a";
+    if (minuscules.includes("ogg")) return "ogg";
     return "webm";
   }
 
   async function envoyerLAudio() {
     const etat = document.getElementById("etat-envoi");
     const publier = document.getElementById("bouton-publier");
-    etat.textContent = config.textes.envoiEnCours;
     publier.disabled = true;
 
+    // LE PLAFOND DE NGINX, VERIFIE AVANT D'ENVOYER. Au-dela, nginx repond 413 :
+    // le visiteur lirait « l'envoi a echoue », et « reessayer » echouerait a
+    // l'identique, sans qu'il comprenne pourquoi.
+    // / Checked before sending: a 413 would look like a network glitch.
+    if (blobLocal.size > config.tailleMaxOctets) {
+      etat.textContent = config.textes.tropLourd;
+      return;
+    }
+
+    etat.textContent = config.textes.envoiEnCours;
+
     const donnees = new FormData();
-    donnees.append("audio", blobLocal, `capsule.${extensionDuBlob()}`);
-    donnees.append("duree", String(secondesEcoulees()));
+    donnees.append("audio", blobLocal, nomDuFichier);
+    donnees.append("duree", String(dureeAnnoncee));
 
     try {
       const reponse = await fetch(config.urlCreation, {
@@ -167,6 +196,11 @@
 
   document.getElementById("bouton-demarrer").addEventListener("click", demarrer);
   document.getElementById("bouton-arreter").addEventListener("click", arreter);
+  // Un vrai bouton ouvre le selecteur : le champ fichier, masque, ne se
+  // prendrait pas au clavier. / A real button opens the hidden file picker.
+  const champFichier = document.getElementById("fichier-audio");
+  document.getElementById("bouton-fichier").addEventListener("click", () => champFichier.click());
+  champFichier.addEventListener("change", choisirUnFichier);
   document.getElementById("bouton-recommencer").addEventListener("click", () => {
     window.location.reload();
   });

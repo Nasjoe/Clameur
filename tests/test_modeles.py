@@ -10,7 +10,6 @@ from capsules.models import Capsule, Tag, TagDeCapsule
 def test_une_borne_a_des_valeurs_par_defaut_utilisables():
     reglages = Reglages.get_solo()
     assert reglages.dots_par_ligne == 576, "80 mm attendu par defaut"
-    assert reglages.duree_max_secondes == 600, "garde-fou technique"
     assert reglages.active is True
 
 

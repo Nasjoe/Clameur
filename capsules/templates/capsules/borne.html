@@ -57,6 +57,19 @@
   <p class="doux" style="font-size:.85rem;margin-top:.75rem">
     {% translate "Ton téléphone va demander l'accès au micro." %}
   </p>
+
+  {% comment %}
+    UN FICHIER DEJA PRET PLUTOT QUE LE MICRO : un memo vocal, un son pris
+    ailleurs. La popup de la liste mene a cette ancre. Un vrai bouton ouvre le
+    selecteur : le champ fichier, masque, ne se prendrait pas au clavier.
+    / A ready-made file instead of the mic; the list's popup links here.
+  {% endcomment %}
+  <p id="fichier" style="margin-top:var(--space-lg)">
+    <button class="porte porte--fantome porte--large" id="bouton-fichier" type="button">
+      {% translate "Choisir un fichier audio" %}
+    </button>
+    <input type="file" id="fichier-audio" accept="audio/*" hidden>
+  </p>
 </section>
 
 <section id="etape-enregistrement" class="etape" hidden>
@@ -116,14 +129,18 @@
 <script>
   window.CLAMEUR = {
     urlCreation: "{% url 'capsules:creer_capsule' %}",
-    dureeMaxSecondes: {{ reglages.duree_max_secondes }},
+    // LE MEME PLAFOND QUE `client_max_body_size` DANS nginx/clameur.conf.
+    // Au-dela, nginx refuse l'envoi : on previent avant. A changer aux deux
+    // endroits. / Must match nginx's client_max_body_size.
+    tailleMaxOctets: 64 * 1024 * 1024,
     jetonCsrf: "{{ csrf_token }}",
     textes: {
       micRefuse: "{% translate 'Sans micro, impossible d\'enregistrer.' %}",
       envoiEnCours: "{% translate 'Envoi de ta voix…' %}",
       envoiEchoue: "{% translate 'L\'envoi a échoué. Ta voix est toujours là.' %}",
       reessayer: "{% translate 'Réessayer l\'envoi' %}",
-      publication: "{% translate 'Publication…' %}"
+      publication: "{% translate 'Publication…' %}",
+      tropLourd: "{% translate 'Fichier trop lourd : 64 Mo maximum.' %}"
     }
   };
 </script>

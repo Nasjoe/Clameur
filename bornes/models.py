@@ -55,14 +55,9 @@ class Reglages(SingletonModel):
         help_text=_("La phrase que lit le visiteur en arrivant sur la page."),
     )
 
-    # Garde-fou TECHNIQUE, pas editorial : le client arrete MediaRecorder a
-    # cette duree, mais le serveur accepte ce qui lui arrive au-dela. Un
-    # enregistrement ne doit jamais etre detruit par un depassement.
-    # / Technical guard only: the client stops, the server still accepts.
-    duree_max_secondes = models.PositiveIntegerField(
-        default=600, verbose_name=_("durée maximale en secondes"),
-        help_text=_("Garde-fou contre l'enregistrement oublié en poche."),
-    )
+    # PLUS DE DUREE MAXIMALE depuis le 2026-09-11 : elle coupait les longues
+    # clameurs. La seule limite est la taille d'un envoi, fixee par nginx.
+    # / No maximum duration any more: nginx's upload size is the only limit.
 
     class Meta:
         verbose_name = _("réglages")

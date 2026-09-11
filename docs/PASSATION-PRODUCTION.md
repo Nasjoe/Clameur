@@ -214,10 +214,17 @@ lecteur muet affichant `0:00 / 0:00`, sur un fichier pourtant valide.
 **`gzip off` sur `/medias/`.** Compresser ferait sauter `Accept-Ranges`, et le
 lecteur média du navigateur se bloquerait.
 
-**Les délais.** `--timeout 120` sur gunicorn et `proxy_read_timeout 180s` sur
-nginx : la publication est **synchrone** et appelle ffmpeg. Le défaut de 30 s
-tuerait le worker au milieu d'une capsule longue, et le visiteur perdrait sa
-voix.
+**Les délais.** ffmpeg 240 s (`capsules/publication.py`), `--timeout 300` sur
+gunicorn et `proxy_read_timeout 300s` sur nginx : la publication est
+**synchrone** et appelle ffmpeg. Le défaut de 30 s tuerait le worker au milieu
+d'une capsule longue, et le visiteur perdrait sa voix. Chaque délai doit rester
+sous le suivant, sinon la capsule reste bloquée en brouillon :
+`tests/test_delais.py` y veille.
+
+**Pas de durée maximale.** Depuis le 2026-09-11, une clameur n'est plus bornée
+dans le temps : c'est `client_max_body_size 64M` qui limite un envoi, et le
+navigateur vérifie la taille avant d'envoyer (`tailleMaxOctets` dans
+`borne.html`). Change les deux ensemble.
 
 ## 7. Exploitation
 

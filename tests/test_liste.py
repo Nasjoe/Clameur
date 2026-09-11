@@ -206,6 +206,33 @@ def test_l_adresse_courte_mene_a_la_page_d_enregistrement(client, corpus):
     assert "Enregistrer avec cet appareil" in contenu
 
 @pytest.mark.django_db
+def test_on_peut_deposer_un_fichier_audio_plutot_que_parler(client, corpus):
+    """Un memo vocal deja enregistre, un son pris ailleurs : le micro n'est pas
+    le seul chemin. La popup y mene, `/nouvelle` le porte.
+    / A voice memo recorded elsewhere: the mic is not the only way in."""
+    from django.core.cache import cache
+
+    cache.clear()
+    invitation = client.get("/").content.decode()
+    assert 'href="/nouvelle#fichier"' in invitation
+    assert "Envoyer un fichier audio" in invitation
+
+    page = client.get("/nouvelle").content.decode()
+    assert 'id="fichier"' in page, "la popup vise une ancre qui n'existe pas"
+    assert 'accept="audio/*"' in page
+    assert "tailleMaxOctets" in page, "le navigateur doit connaitre le plafond de nginx"
+
+@pytest.mark.django_db
+def test_aucune_duree_maximale_n_arrete_l_enregistrement(client, corpus):
+    """Retire le 2026-09-11 : la limite coupait les longues clameurs.
+    / Removed: the limit cut long clameurs short."""
+    from django.core.cache import cache
+
+    cache.clear()
+    page = client.get("/nouvelle").content.decode()
+    assert "dureeMaxSecondes" not in page
+
+@pytest.mark.django_db
 def test_lieu_ferme_l_adresse_courte_explique(client, corpus):
     from django.core.cache import cache
 
