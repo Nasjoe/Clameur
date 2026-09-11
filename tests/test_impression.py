@@ -42,12 +42,60 @@ def test_les_tags_de_l_auteur_apparaissent_sur_le_ticket(capsule):
 
 
 @pytest.mark.django_db
+def test_le_ticket_s_imprime_en_police_vectorielle(capsule):
+    """La police matricielle par defaut crenele les minuscules et rend le
+    « · » des tags en « -- ». Juge sur le papier de la NT311 le 2026-09-11.
+    / The default bitmap font makes lowercase jagged: checked on paper."""
+    octets = construire_le_ticket(capsule, 576, "https://x.example/c/1")
+    police_vectorielle_latine = b"\x1d\x28\x45\x03\x00\x06\x14\x01"
+    taille_16 = b"\x1d\x28\x45\x03\x00\x06\x0a\x10"
+
+    assert police_vectorielle_latine in octets
+    assert taille_16 in octets
+    assert octets.index(police_vectorielle_latine) < octets.index(b"UNE CLAMEUR"), (
+        "la police doit etre choisie avant le premier texte"
+    )
+
+
+@pytest.mark.django_db
 def test_can_print_refuse_une_borne_sans_numero_de_serie(reglages_sans_imprimante, monkeypatch):
     monkeypatch.setenv("SUNMI_APP_ID", "a")
     monkeypatch.setenv("SUNMI_APP_KEY", "k")
+    # Sans cela, le test dependrait du .env de la machine qui le lance.
+    # / Otherwise the test would depend on the local .env.
+    monkeypatch.delenv("SUNMI_PRINTER_SN", raising=False)
     possible, message = SunmiCloudBackend(reglages_sans_imprimante).can_print()
     assert possible is False
     assert "série" in message
+
+
+@pytest.mark.django_db
+def test_sans_numero_dans_les_reglages_le_env_prend_le_relais(
+    capsule, reglages_sans_imprimante, monkeypatch
+):
+    """Installation neuve : la console n'a pas encore ete ouverte, le .env si.
+    Le numero doit alors servir PARTOUT, jusqu'a l'envoi.
+    / Fresh install: the .env number must be used all the way to the push."""
+    from unittest.mock import patch
+
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+    monkeypatch.setenv("SUNMI_PRINTER_SN", "N411245U00999")
+    backend = SunmiCloudBackend(reglages_sans_imprimante)
+
+    assert backend.can_print() == (True, "")
+    with patch.object(SunmiCloudBackend, "_pilote") as faux_pilote, \
+         patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
+        numero = backend.print_ticket(capsule, "https://x.example/c/1")
+
+    assert faux_pilote.return_value.pushContent.call_args.kwargs["sn"] == "N411245U00999"
+    assert numero.startswith("N411245U00999_")
+
+
+@pytest.mark.django_db
+def test_le_numero_des_reglages_l_emporte_sur_le_env(reglages, monkeypatch):
+    monkeypatch.setenv("SUNMI_PRINTER_SN", "N411245U00999")
+    assert SunmiCloudBackend(reglages).numero_de_serie == "N411245U00000"
 
 
 @pytest.mark.django_db
@@ -71,6 +119,59 @@ def test_une_api_sunmi_injoignable_ne_leve_jamais(reglages, monkeypatch):
     en_ligne, message = SunmiCloudBackend(reglages).est_en_ligne()
     assert en_ligne is False
     assert "injoignable" in message
+
+
+def reponse_online_status(numero_de_serie, is_online):
+    """La reponse REELLE de Sunmi, relevee le 2026-09-11 sur la NT311.
+
+    L'ancien code lisait `data.status`, une cle qui n'existe pas :
+    l'imprimante etait toujours « hors ligne », alors que le ticket sortait.
+    / Sunmi's real answer: the old code read a key that does not exist.
+    """
+    import json
+
+    return json.dumps({
+        "code": 1,
+        "data": {
+            "list": [{"sn": numero_de_serie, "msn": "", "is_online": is_online}],
+            "page": {"page": 0, "pageSize": 0, "total": 1},
+        },
+        "msg": "success",
+    })
+
+
+@pytest.mark.django_db
+def test_une_imprimante_en_ligne_est_vue_en_ligne(reglages, monkeypatch):
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+    with patch("impression.sunmi_cloud_printer.requests.post") as faux_post:
+        faux_post.return_value = MagicMock(
+            status_code=200,
+            text=reponse_online_status(reglages.numero_serie_imprimante, is_online=1),
+        )
+        en_ligne, message = SunmiCloudBackend(reglages).est_en_ligne()
+
+    assert en_ligne is True
+    assert message == ""
+
+
+@pytest.mark.django_db
+def test_une_imprimante_hors_ligne_est_vue_hors_ligne(reglages, monkeypatch):
+    from unittest.mock import MagicMock, patch
+
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+    with patch("impression.sunmi_cloud_printer.requests.post") as faux_post:
+        faux_post.return_value = MagicMock(
+            status_code=200,
+            text=reponse_online_status(reglages.numero_serie_imprimante, is_online=0),
+        )
+        en_ligne, message = SunmiCloudBackend(reglages).est_en_ligne()
+
+    assert en_ligne is False
+    assert "hors ligne" in message
 
 
 @pytest.mark.django_db

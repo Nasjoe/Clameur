@@ -36,11 +36,15 @@ def test_les_appels_reseau_ont_un_timeout():
 def test_les_methodes_d_interrogation_retournent_le_json():
     """CORRECTION 4 : sans valeur de retour, le controle d'etat est irrealisable."""
     with patch("impression.sunmi_cloud_printer.requests.post") as faux_post:
+        # Le format REEL de Sunmi : une liste d'appareils, pas un champ
+        # `status`. L'ancien faux ici avait fait croire au mauvais format.
+        # / Sunmi's real format; the old fake here taught the wrong one.
         faux_post.return_value = MagicMock(
-            status_code=200, text='{"code": 1, "data": {"status": "online"}}'
+            status_code=200,
+            text='{"code": 1, "data": {"list": [{"sn": "SN", "is_online": 1}]}}',
         )
         resultat = pilote_de_test().onlineStatus("SN")
-    assert resultat["data"]["status"] == "online"
+    assert resultat["data"]["list"][0]["is_online"] == 1
 
 
 def test_un_echec_http_leve_une_exception():

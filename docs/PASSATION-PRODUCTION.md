@@ -82,9 +82,12 @@ Copie `.env.example` en `.env` et renseigne :
 | `POSTGRES_*` | un mot de passe solide, pas celui de l'exemple |
 | `MISTRAL_API_KEY` | facultative. Sans elle, les capsules restent publiées et écoutables, simplement sans transcription. |
 | `SUNMI_APP_ID`, `SUNMI_APP_KEY` | facultatives. Sans elles, l'impression bascule sur un backend de simulation qui écrit le ticket dans les journaux. |
+| `SUNMI_PRINTER_SN` | facultative. Le numéro de série de l'imprimante, lu **seulement si le champ des `Réglages` est vide**. |
 
-Le **numéro de série de l'imprimante n'est pas ici** : il se saisit dans les
-`Réglages` depuis la console. Ce n'est pas un secret.
+Le **numéro de série de l'imprimante** se saisit normalement dans les
+`Réglages` depuis la console. Ce n'est pas un secret. `SUNMI_PRINTER_SN` n'est
+qu'un repli, pratique sur une installation neuve : dès que le champ des
+`Réglages` est rempli, c'est lui qui l'emporte.
 
 ## 4. Déployer
 

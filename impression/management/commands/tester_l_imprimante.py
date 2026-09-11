@@ -75,9 +75,9 @@ class Command(BaseCommand):
 
         pilote = backend._pilote()
         pilote.appendRawData(octets)
-        numero = f"{reglages.numero_serie_imprimante}_test_{int(time.time())}"
+        numero = f"{backend.numero_de_serie}_test_{int(time.time())}"
         pilote.pushContent(
-            trade_no=numero, sn=reglages.numero_serie_imprimante, count=1,
+            trade_no=numero, sn=backend.numero_de_serie, count=1,
             media_text="Clameur — test",
         )
 

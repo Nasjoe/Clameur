@@ -27,18 +27,28 @@ DELAI_ETAT_IMPRIMANTE = (1, 3)
 class SunmiCloudBackend(PrinterBackend):
     def __init__(self, borne):
         self.reglages = borne
+        # LES REGLAGES D'ABORD, LE .env EN REPLI. Sur une installation neuve,
+        # la console n'a pas encore ete ouverte mais le .env est deja la. Des
+        # que le champ des Reglages est rempli, c'est lui qui l'emporte.
+        # / Réglages first, the .env as a fallback for a fresh install.
+        self.numero_de_serie = (
+            borne.numero_serie_imprimante or os.environ.get("SUNMI_PRINTER_SN", "")
+        )
 
     def _pilote(self) -> SunmiCloudPrinter:
         return SunmiCloudPrinter(
             dots_per_line=self.reglages.dots_par_ligne,
             app_id=os.environ.get("SUNMI_APP_ID", ""),
             app_key=os.environ.get("SUNMI_APP_KEY", ""),
-            printer_sn=self.reglages.numero_serie_imprimante,
+            printer_sn=self.numero_de_serie,
         )
 
     def can_print(self) -> tuple[bool, str]:
-        if not self.reglages.numero_serie_imprimante:
-            return False, "Numéro de série Sunmi manquant sur la borne."
+        if not self.numero_de_serie:
+            return False, (
+                "Numéro de série Sunmi manquant : ni dans les Réglages, "
+                "ni dans SUNMI_PRINTER_SN."
+            )
         if not os.environ.get("SUNMI_APP_ID"):
             return False, "SUNMI_APP_ID non configuré."
         if not os.environ.get("SUNMI_APP_KEY"):
@@ -63,12 +73,20 @@ class SunmiCloudBackend(PrinterBackend):
             # / Three seconds, not ten: this runs inside the page render.
             pilote = self._pilote()
             pilote.DELAI_RESEAU = DELAI_ETAT_IMPRIMANTE
-            reponse = pilote.onlineStatus(self.reglages.numero_serie_imprimante)
+            reponse = pilote.onlineStatus(self.numero_de_serie)
         except Exception as erreur:
             logger.warning("onlineStatus injoignable : %s", erreur)
             return False, "Imprimante injoignable."
-        donnees = reponse.get("data") or {}
-        en_ligne = donnees.get("status") in ("online", 1, "1", True)
+        # SUNMI REND UNE LISTE D'APPAREILS, PAS UN CHAMP `status`. Releve sur la
+        # NT311 le 2026-09-11 : {"data": {"list": [{"sn": ..., "is_online": 1}]}}.
+        # L'ancien code lisait `data.status`, qui n'existe pas : l'imprimante
+        # etait toujours « hors ligne » alors que le ticket sortait.
+        # / Sunmi returns a device list; the old code read a missing key.
+        appareils = (reponse.get("data") or {}).get("list") or []
+        en_ligne = any(
+            appareil.get("sn") == self.numero_de_serie and appareil.get("is_online") == 1
+            for appareil in appareils
+        )
         return en_ligne, "" if en_ligne else "Imprimante hors ligne."
 
     def print_ticket(self, capsule, url_capsule: str, reference="") -> str:
@@ -92,12 +110,12 @@ class SunmiCloudBackend(PrinterBackend):
         # gardant un rejeu identique a lui-meme.
         # / The capsule's UUID alone made reprinting impossible: Sunmi ignored
         #   the second push and nothing said so.
-        numero = f"{self.reglages.numero_serie_imprimante}_{capsule.uuid.hex[:16]}"
+        numero = f"{self.numero_de_serie}_{capsule.uuid.hex[:16]}"
         if reference:
             numero = f"{numero}_{reference}"
         pilote.pushContent(
             trade_no=numero,
-            sn=self.reglages.numero_serie_imprimante,
+            sn=self.numero_de_serie,
             count=1,
             media_text="Clameur",
         )

@@ -38,6 +38,17 @@ def construire_le_ticket(capsule, dots_par_ligne: int, url_capsule: str) -> byte
     )
 
     ticket.restoreDefaultSettings()
+
+    # POLICE VECTORIELLE SUNMI, PAS LA MATRICIELLE PAR DEFAUT. Sur le papier de
+    # la NT311, la matricielle crenelait les minuscules et rendait le « · »
+    # des tags en « -- ». Compare le 2026-09-11, avec l'imprimante reglee en
+    # Quality 100 et « fine print mode » (reglages de la machine, pas du code).
+    # / Sunmi vector font: the default bitmap font made lowercase jagged.
+    ticket.selectAsciiCharFont(1)
+    ticket.selectOtherCharFont(1)
+    ticket.setHarfBuzzAsciiCharSize(16)
+    ticket.setHarfBuzzOtherCharSize(16)
+
     ticket.setAlignment(ALIGN_CENTER)
 
     if capsule.photo:
