@@ -1,0 +1,53 @@
+SPIKE QART — 2026-09-11
+=======================
+
+Question : peut-on imprimer sur le ticket Sunmi un QR code qui dessine une
+image (algorithme QArt de Russ Cox, https://research.swtch.com/qart) ?
+Reponse : oui. Prototype jetable, rien ici n'est branche sur l'application.
+
+Resultats
+---------
+- 24/24 QR valides, lus par zxing-cpp et OpenCV (run1.py, temoin.py).
+- Test papier sur la NT311 via le cloud Sunmi : 4 tickets, tous scannes
+  (envoi_cloud.py). Coeur et portrait juges tres bons.
+- URL courte (8 premiers caracteres de l'UUID) : 63 % des pixels controles
+  contre 51 % avec l'UUID entier, en version 8.
+- 110 pictos candidats, tous lisibles : out/pictos_page{1,2,3}.png,
+  index dans out/pictos_index.txt. A TRIER.
+
+Contenu
+-------
+qart.py            l'algorithme (portage de rsc.io/qr)
+essai.py           decodeurs et URL d'essai, partages par les scripts
+run1.py            matrice images x URL x versions
+temoin.py          QR classique degrade, pour situer OpenCV
+planche.py         planche de comparaison (out/planche.png)
+dessins.py         dessine img/coeur.png et img/smiley.png
+ticket_test.py     ticket ESC/POS de test (out/ticket_qart.bin)
+envoi_cloud.py     envoi des tickets par le cloud Sunmi (identifiants du .env)
+iconify.py         comparatif des banques d'icones (API Iconify)
+compte.py          compte des pictos Phosphor du champ lexical
+liste_gi.py        liste des candidats game-icons
+pictos.py          premier essai de 12 pictos (out/pictos.png)
+planche_pictos.py  les 110 pictos et leurs planches
+
+Relancer
+--------
+Depuis ce dossier, dans un venv jetable :
+  pip install numpy pillow segno zxing-cpp opencv-python-headless cairosvg requests python-dotenv
+  python planche_pictos.py
+Les chemins sont relatifs a ce dossier ; ticket_test.py et envoi_cloud.py
+importent le pilote Sunmi depuis /home/jonas/Gits/Clameur (chemin en dur).
+
+Licences
+--------
+- qart.py : derive de rsc.io/qr, BSD 3 clauses, voir LICENSE-rsc-qr.
+- img/pjw.png : image d'exemple du depot rsc/qr (meme licence).
+- img/logo.png : icone de Clameur. img/coeur.png, img/smiley.png : dessines
+  par dessins.py.
+- pictos/*/ph__* : Phosphor Icons, licence MIT, https://phosphoricons.com
+  (Copyright (c) 2023 Phosphor Icons). La notice MIT doit accompagner les
+  fichiers s'ils sont gardes.
+- pictos/*/game-icons__* : game-icons.net, licence CC BY 3.0. CREDIT
+  OBLIGATOIRE (auteur de chaque picto, https://game-icons.net), par exemple
+  dans les mentions legales.

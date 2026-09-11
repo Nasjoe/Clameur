@@ -1,6 +1,7 @@
 """Fixtures partagees. / Shared fixtures."""
 
 import io
+import os
 import wave
 
 import pytest
@@ -8,6 +9,31 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 
 from bornes.models import Reglages
 from capsules.models import Capsule, StatutCapsule
+
+# LES TACHES NE PARTENT JAMAIS DANS LE VRAI REDIS. Un test en
+# `transaction=True` deposait de vraies taches dans le Redis de dev, et le
+# worker de dev les executait SUR LA BASE DE DEV : un vrai ticket pouvait
+# sortir. En memoire, elles sont enfilees et jamais executees ; le backend de
+# resultats aussi, pour que rien n'atteigne Redis.
+#
+# PAR L'ENVIRONNEMENT, ET NON PAR `app.conf`. Mesure faite le 2026-09-11 :
+# l'application est configuree avec le prefixe CELERY, et une affectation a
+# `app.conf.result_backend` restait masquee par le CELERY_RESULT_BACKEND des
+# reglages Django. Celery lit ces deux variables d'environnement en priorite.
+# / Via the environment: app.conf was shadowed by the prefixed Django setting.
+os.environ["CELERY_BROKER_URL"] = "memory://"
+os.environ["CELERY_RESULT_BACKEND"] = "cache+memory://"
+
+
+@pytest.fixture(autouse=True)
+def sans_identifiants_sunmi(monkeypatch):
+    """Le .env de dev porte de vrais identifiants Sunmi, et docker compose les
+    injecte dans le conteneur des tests. Sans cela, `GET /nouvelle` interrogeait
+    le vrai `onlineStatus`, et un backend cense refuser envoyait un vrai
+    `pushContent`. Un test qui en a besoin les pose lui-meme.
+    / Real Sunmi credentials from the .env: removed, tests set their own."""
+    for variable in ("SUNMI_APP_ID", "SUNMI_APP_KEY", "SUNMI_PRINTER_SN"):
+        monkeypatch.delenv(variable, raising=False)
 
 
 @pytest.fixture(autouse=True)

@@ -31,8 +31,13 @@ class SunmiCloudBackend(PrinterBackend):
         # la console n'a pas encore ete ouverte mais le .env est deja la. Des
         # que le champ des Reglages est rempli, c'est lui qui l'emporte.
         # / Réglages first, the .env as a fallback for a fresh install.
+        #
+        # LES DEUX SOURCES SONT NETTOYEES. Une espace collee avec le numero
+        # faussait la comparaison avec la reponse de Sunmi : l'imprimante
+        # passait « hors ligne » a vie. / A stray space made it look offline.
         self.numero_de_serie = (
-            borne.numero_serie_imprimante or os.environ.get("SUNMI_PRINTER_SN", "")
+            (borne.numero_serie_imprimante or "").strip()
+            or os.environ.get("SUNMI_PRINTER_SN", "").strip()
         )
 
     def _pilote(self) -> SunmiCloudPrinter:
@@ -110,7 +115,13 @@ class SunmiCloudBackend(PrinterBackend):
         # gardant un rejeu identique a lui-meme.
         # / The capsule's UUID alone made reprinting impossible: Sunmi ignored
         #   the second push and nothing said so.
-        numero = f"{self.numero_de_serie}_{capsule.uuid.hex[:16]}"
+        #
+        # PAS DE NUMERO DE SERIE EN TETE. Sunmi le recoit deja a part (`sn`), et
+        # il refuse un `trade_no` trop long : `parameter error` a 35 caracteres,
+        # accepte a 29 (releve le 2026-09-11). Avec le numero de serie, on
+        # debordait des le dixieme job. Ici : 16 caracteres, plus le job.
+        # / No serial prefix: Sunmi rejects long trade_nos, and gets sn apart.
+        numero = capsule.uuid.hex[:16]
         if reference:
             numero = f"{numero}_{reference}"
         pilote.pushContent(

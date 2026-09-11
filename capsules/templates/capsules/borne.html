@@ -3,7 +3,7 @@
 
 {% block titre %}{{ reglages.nom }} — {% translate "Clameur" %}{% endblock %}
 
-{% block og_titre %}{{ borne.nom }}{% endblock %}
+{% block og_titre %}{{ reglages.nom }}{% endblock %}
 {% block og_description %}{% translate "Enregistre une capsule sonore et repars avec ton ticket." %}{% endblock %}
 
 {% block styles %}
@@ -60,13 +60,15 @@
 
   {% comment %}
     UN FICHIER DEJA PRET PLUTOT QUE LE MICRO : un memo vocal, un son pris
-    ailleurs. La popup de la liste mene a cette ancre. Un vrai bouton ouvre le
-    selecteur : le champ fichier, masque, ne se prendrait pas au clavier.
-    / A ready-made file instead of the mic; the list's popup links here.
+    ailleurs. Cette page est la seule a le proposer : la popup de la liste ne
+    le fait pas. Un vrai bouton ouvre le selecteur : le champ fichier, masque,
+    ne se prendrait pas au clavier.
+    / A ready-made file instead of the mic; this page is the only way in.
   {% endcomment %}
-  <p id="fichier" style="margin-top:var(--space-lg)">
+  <p class="doux" style="margin:var(--space-lg) 0 var(--space-xs)">{% translate "ou" %}</p>
+  <p>
     <button class="porte porte--fantome porte--large" id="bouton-fichier" type="button">
-      {% translate "Choisir un fichier audio" %}
+      {% translate "Envoyer un fichier audio" %}
     </button>
     <input type="file" id="fichier-audio" accept="audio/*" hidden>
   </p>

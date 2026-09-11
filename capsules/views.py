@@ -20,7 +20,7 @@ from bornes.models import Reglages
 from capsules.garde_fous import adresse_ip, limite_atteinte
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
 from capsules.photos import purger_les_exif
-from capsules.publication import publier
+from capsules.publication import a_une_piste_audio, publier
 
 logger = logging.getLogger(__name__)
 
@@ -173,6 +173,16 @@ def creer_capsule(request):
         audio_original=fichier,
         duree_secondes=_duree_annoncee(request.POST.get("duree")),
     )
+
+    # UN FICHIER SANS SON EST REFUSE ICI, AVANT D'ALLER PLUS LOIN. Une photo
+    # renommee en .mp3 passait jusqu'au ticket, avec « 0 s ». Le controle porte
+    # sur le CONTENU, pas sur le format, et au moindre doute de ffprobe le
+    # fichier passe (voir `a_une_piste_audio`).
+    # / A file with no audio stream is refused; any doubt lets it through.
+    if not a_une_piste_audio(capsule.audio_original.path):
+        capsule.audio_original.delete(save=False)
+        capsule.delete()
+        return JsonResponse({"erreur": _("Ce fichier ne contient pas de son.")}, status=400)
     return JsonResponse({"uuid": str(capsule.uuid)})
 
 

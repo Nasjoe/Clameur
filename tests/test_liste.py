@@ -208,17 +208,17 @@ def test_l_adresse_courte_mene_a_la_page_d_enregistrement(client, corpus):
 @pytest.mark.django_db
 def test_on_peut_deposer_un_fichier_audio_plutot_que_parler(client, corpus):
     """Un memo vocal deja enregistre, un son pris ailleurs : le micro n'est pas
-    le seul chemin. La popup y mene, `/nouvelle` le porte.
-    / A voice memo recorded elsewhere: the mic is not the only way in."""
+    le seul chemin. Le choix vit sur `/nouvelle` SEULEMENT : retire de la
+    popup de la liste le 2026-09-11, a la demande du mainteneur.
+    / A voice memo recorded elsewhere: the choice lives on /nouvelle only."""
     from django.core.cache import cache
 
     cache.clear()
     invitation = client.get("/").content.decode()
-    assert 'href="/nouvelle#fichier"' in invitation
-    assert "Envoyer un fichier audio" in invitation
+    assert "Envoyer un fichier audio" not in invitation
 
     page = client.get("/nouvelle").content.decode()
-    assert 'id="fichier"' in page, "la popup vise une ancre qui n'existe pas"
+    assert "Envoyer un fichier audio" in page
     assert 'accept="audio/*"' in page
     assert "tailleMaxOctets" in page, "le navigateur doit connaitre le plafond de nginx"
 
@@ -231,6 +231,23 @@ def test_aucune_duree_maximale_n_arrete_l_enregistrement(client, corpus):
     cache.clear()
     page = client.get("/nouvelle").content.decode()
     assert "dureeMaxSecondes" not in page
+
+@pytest.mark.django_db
+def test_la_page_de_depot_a_un_titre_de_partage(client, corpus):
+    """Le gabarit lisait `borne.nom`, une variable qui n'existe plus : l'apercu
+    d'un lien partage vers /nouvelle n'avait pas de titre.
+    / The template read a variable that no longer exists."""
+    from django.core.cache import cache
+
+    from bornes.models import Reglages
+
+    reglages = Reglages.get_solo()
+    reglages.nom = "La Place des Voix"
+    reglages.save()
+    cache.clear()
+
+    page = client.get("/nouvelle").content.decode()
+    assert '<meta property="og:title" content="La Place des Voix' in page
 
 @pytest.mark.django_db
 def test_lieu_ferme_l_adresse_courte_explique(client, corpus):

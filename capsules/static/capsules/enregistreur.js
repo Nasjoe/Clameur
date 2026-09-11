@@ -47,6 +47,16 @@
     });
   }
 
+  // LES DEUX PORTES DE L'ACCUEIL SE FERMENT DES LE PREMIER APPUI. Pendant que
+  // le telephone demande le micro, un second appui lancait un second
+  // enregistreur dans le meme tampon — audio corrompu, micro jamais rendu — et
+  // « Envoyer un fichier » partait par-dessus l'enregistrement.
+  // / Both buttons lock on the first tap: a double tap started two recorders.
+  function verrouillerLAccueil(verrou) {
+    document.getElementById("bouton-demarrer").disabled = verrou;
+    document.getElementById("bouton-fichier").disabled = verrou;
+  }
+
   function secondesEcoulees() {
     return Math.floor((Date.now() - debutEnMs) / 1000);
   }
@@ -59,12 +69,16 @@
   }
 
   async function demarrer() {
+    verrouillerLAccueil(true);
     let flux;
     try {
       // Exige HTTPS (ou localhost) : sans lui, pas de micro du tout.
       // / Requires HTTPS, otherwise there is no microphone at all.
       flux = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch (erreur) {
+      // Micro refuse : l'autre porte, le fichier, doit rester ouverte.
+      // / Mic refused: the file option must stay available.
+      verrouillerLAccueil(false);
       document.getElementById("bouton-demarrer").insertAdjacentHTML(
         "afterend",
         `<p class="carte avis" role="alert">${config.textes.micRefuse}</p>`
@@ -144,20 +158,31 @@
     donnees.append("audio", blobLocal, nomDuFichier);
     donnees.append("duree", String(dureeAnnoncee));
 
+    // Le serveur explique ses refus — fichier sans son, trop d'envois, borne
+    // fermee. Sa phrase dit la vraie raison ; « reessayer » n'y changerait rien.
+    // / The server states its reasons; retrying would not change them.
+    let refusDuServeur = "";
     try {
       const reponse = await fetch(config.urlCreation, {
         method: "POST",
         headers: { "X-CSRFToken": config.jetonCsrf },
         body: donnees,
       });
-      if (!reponse.ok) throw new Error(await reponse.text());
+      if (!reponse.ok) {
+        refusDuServeur = (await reponse.json().catch(() => ({}))).erreur || "";
+        throw new Error(refusDuServeur);
+      }
       uuidCapsule = (await reponse.json()).uuid;
       etat.textContent = "";
       publier.disabled = false;
     } catch (erreur) {
+      etat.innerHTML = "";
+      if (refusDuServeur) {
+        etat.textContent = refusDuServeur;
+        return;
+      }
       // AUCUN REESSAI AUTOMATIQUE SILENCIEUX. Le blob reste en memoire et le
       // visiteur decide. / No silent auto-retry: the blob stays, the visitor decides.
-      etat.innerHTML = "";
       etat.textContent = config.textes.envoiEchoue + " ";
       const bouton = document.createElement("button");
       bouton.type = "button";

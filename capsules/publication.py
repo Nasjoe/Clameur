@@ -32,6 +32,12 @@ logger = logging.getLogger(__name__)
 # / 240 s since duration is unbounded: one hour takes 34 s to normalise.
 DUREE_MAX_FFMPEG = 240
 
+# ffprobe lit un en-tete, il ne convertit rien : trente secondes, c'est deja un
+# fichier qui ne repond pas. Il court APRES ffmpeg a la publication, les deux
+# s'additionnent donc sous le delai de gunicorn (tests/test_delais.py).
+# / ffprobe runs after ffmpeg: both add up under gunicorn's timeout.
+DUREE_MAX_FFPROBE = 30
+
 
 def normaliser_l_audio(capsule) -> None:
     """Produit l'AAC/m4a servi aux navigateurs.
@@ -53,6 +59,11 @@ def normaliser_l_audio(capsule) -> None:
                 [
                     "ffmpeg", "-y",
                     "-i", capsule.audio_original.path,
+                    # -vn : LE SON SEULEMENT. Un fichier depose peut etre une
+                    # video ; sans cette option, ffmpeg reencodait aussi son
+                    # image dans le m4a — lent, et lourd a servir.
+                    # / Audio only: a dropped video file kept its picture track.
+                    "-vn",
                     "-c:a", "aac", "-b:a", "64k", "-ac", "1",
                     # +faststart deplace l'atome `moov` en TETE du fichier.
                     # Sans lui, ffmpeg le laisse a la fin : le navigateur ne
@@ -69,15 +80,24 @@ def normaliser_l_audio(capsule) -> None:
             )
             with open(sortie, "rb") as fichier:
                 capsule.audio_diffusion.save("diffusion.m4a", File(fichier), save=False)
-
-            capsule.duree_secondes = capsule.duree_secondes or _duree_du_fichier(
-                capsule.audio_original.path
-            )
     except Exception as erreur:
         # Repli sur l'original : mieux vaut un audio mal encode que pas d'audio.
         # / Fall back to the original: bad encoding beats no audio at all.
         logger.exception("normalisation impossible pour %s", capsule.uuid)
         capsule.erreur_enrichissement = f"Normalisation audio impossible : {erreur}"
+
+    # LA DUREE SE MESURE MEME QUAND FFMPEG A ABANDONNE. Un fichier depose arrive
+    # avec une duree annoncee de 0 : mesuree dans le `try`, elle sautait avec
+    # ffmpeg, et le ticket annoncait « 0 s ». Le m4a d'abord quand il existe :
+    # ffprobe ne sait pas lire la duree d'un webm de MediaRecorder.
+    # / Measured even when ffmpeg gave up; the m4a first, when there is one.
+    if not capsule.duree_secondes:
+        chemin = (
+            capsule.audio_diffusion.path
+            if capsule.audio_diffusion
+            else capsule.audio_original.path
+        )
+        capsule.duree_secondes = _duree_du_fichier(chemin)
 
 
 def _duree_du_fichier(chemin: str) -> int:
@@ -92,12 +112,40 @@ def _duree_du_fichier(chemin: str) -> int:
             ],
             check=True,
             capture_output=True,
-            timeout=30,
+            timeout=DUREE_MAX_FFPROBE,
             text=True,
         )
         return int(float(resultat.stdout.strip()))
     except Exception:
         return 0
+
+
+def a_une_piste_audio(chemin: str) -> bool:
+    """Faux SEULEMENT si ffprobe lit le fichier et n'y trouve aucune piste audio.
+
+    Au moindre doute — ffprobe en echec, trop lent, fichier qu'il ne sait pas
+    lire — on repond vrai : refuser a tort un vrai enregistrement serait bien
+    pire que laisser passer un fichier douteux. Ce n'est PAS une liste blanche
+    de formats : c'est le contenu qu'on regarde.
+    / False only when ffprobe reads the file and finds no audio stream.
+    """
+    try:
+        resultat = subprocess.run(
+            [
+                "ffprobe", "-v", "error",
+                "-select_streams", "a",
+                "-show_entries", "stream=codec_type",
+                "-of", "csv=p=0",
+                chemin,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=DUREE_MAX_FFPROBE,
+            text=True,
+        )
+    except Exception:
+        return True
+    return bool(resultat.stdout.strip())
 
 
 def publier(capsule) -> None:

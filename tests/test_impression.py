@@ -86,10 +86,38 @@ def test_sans_numero_dans_les_reglages_le_env_prend_le_relais(
     assert backend.can_print() == (True, "")
     with patch.object(SunmiCloudBackend, "_pilote") as faux_pilote, \
          patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
-        numero = backend.print_ticket(capsule, "https://x.example/c/1")
+        backend.print_ticket(capsule, "https://x.example/c/1")
 
     assert faux_pilote.return_value.pushContent.call_args.kwargs["sn"] == "N411245U00999"
-    assert numero.startswith("N411245U00999_")
+
+
+@pytest.mark.django_db
+def test_le_numero_de_ticket_reste_assez_court_pour_sunmi(capsule, reglages, monkeypatch):
+    """Sunmi refuse un `trade_no` trop long : `parameter error` a 35
+    caracteres, accepte a 29 (releve le 2026-09-11). Le numero de serie en
+    tete le faisait deborder des le dixieme job, en silence : le job passait
+    « echoue » et aucun ticket ne sortait.
+    / Sunmi rejects a long trade_no; the serial-number prefix overflowed it."""
+    from unittest.mock import patch
+
+    monkeypatch.setenv("SUNMI_APP_ID", "a")
+    monkeypatch.setenv("SUNMI_APP_KEY", "k")
+    with patch.object(SunmiCloudBackend, "_pilote"), \
+         patch("impression.sunmi_cloud.construire_le_ticket", return_value=b""):
+        numero = SunmiCloudBackend(reglages).print_ticket(
+            capsule, "https://x.example/c/1", reference=9_999_999
+        )
+
+    assert len(numero) <= 29, f"{numero} : {len(numero)} caracteres"
+
+
+@pytest.mark.django_db
+def test_une_espace_saisie_dans_la_console_ne_casse_pas_le_numero(reglages):
+    """Une espace finale collee avec le numero donnait « hors ligne » a vie :
+    la comparaison avec la reponse de Sunmi echouait.
+    / A trailing space made the printer look offline forever."""
+    reglages.numero_serie_imprimante = " N411245U00000 "
+    assert SunmiCloudBackend(reglages).numero_de_serie == "N411245U00000"
 
 
 @pytest.mark.django_db
