@@ -26,12 +26,30 @@ def chemin_photo(instance, nom_de_fichier):
     return f"capsules/{instance.uuid}/photo.jpg"
 
 
+# Le ticket porte `/c/<les 8 premiers caracteres de l'UUID>` : plus l'URL est
+# courte, plus le QR a de modules libres pour dessiner son picto.
+# / The ticket carries a short URL: it leaves more of the QR code to the picture.
+LONGUEUR_DU_CODE_COURT = 8
+
+
+def uuid_au_prefixe_libre():
+    """Un UUID dont le code court n'est pas deja pris.
+    / A UUID whose short code is still free."""
+    for _tentative in range(10):
+        candidat = uuid4()
+        prefixe = candidat.hex[:LONGUEUR_DU_CODE_COURT]
+        if not Capsule.objects.filter(uuid__startswith=prefixe).exists():
+            return candidat
+    return candidat
+
+
 class Capsule(models.Model):
     # UUID et NON un entier auto-incremente : l'identifiant est public, il
     # voyage sur un ticket colle dans la rue. Un entier laisserait parcourir
-    # tout le corpus en incrementant.
-    # / A public, non-enumerable identifier: it travels on a ticket in the street.
-    uuid = models.UUIDField(primary_key=True, default=uuid4, editable=False)
+    # tout le corpus en incrementant. Le code court (32 bits) ne mene qu'aux
+    # capsules publiees ou retirees, jamais a un brouillon.
+    # / A public, non-enumerable identifier; the short code never reaches a draft.
+    uuid = models.UUIDField(primary_key=True, default=uuid_au_prefixe_libre, editable=False)
 
     reglages = models.ForeignKey(
         "bornes.Reglages", on_delete=models.PROTECT, related_name="capsules",

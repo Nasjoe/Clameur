@@ -1,4 +1,4 @@
-from django.urls import path
+from django.urls import path, re_path
 
 from capsules import views
 
@@ -18,6 +18,9 @@ urlpatterns = [
     path("affiche", views.affiche, name="affiche"),
 
     path("c/<uuid:uuid>", views.lire_capsule, name="lire_capsule"),
+    # Le code court du ticket : les 8 premiers caracteres de l'UUID.
+    # / The ticket's short code: the UUID's first 8 characters.
+    re_path(r"^c/(?P<code>[0-9a-f]{8})$", views.lire_par_code_court, name="lire_par_code_court"),
     path("c/<uuid:uuid>/publier", views.publier_capsule, name="publier_capsule"),
     path("c/<uuid:uuid>/ecoute", views.compter_une_ecoute, name="compter_une_ecoute"),
     path("c/<uuid:uuid>/retirer", views.retirer_capsule, name="retirer_capsule"),

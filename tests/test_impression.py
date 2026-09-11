@@ -8,16 +8,16 @@ from impression.sunmi_cloud import SunmiCloudBackend
 
 
 @pytest.mark.django_db
-def test_le_ticket_porte_le_pseudo_et_l_url_de_la_capsule(capsule):
+def test_le_ticket_porte_le_pseudo_et_son_qr(capsule):
     """Le mock construit les MEMES octets que le backend reel : ce test est
-    donc un vrai test du ticket, pas d'un bouchon."""
-    url = f"https://clameur.example/c/{capsule.uuid}"
-    octets = construire_le_ticket(capsule, dots_par_ligne=576, url_capsule=url)
+    donc un vrai test du ticket, pas d'un bouchon. Le QR est une image : sa
+    lecture est verifiee dans test_qr_du_ticket.py."""
+    octets = construire_le_ticket(capsule, dots_par_ligne=576, url_capsule="https://x.example/c/1")
     texte = "\n".join(decoder_escpos(octets))
 
     assert "anonyme" in texte
-    assert url in texte, "l'URL du QR doit voyager en clair dans le flux"
     assert "CLAMEUR" in texte
+    assert "[image" in texte, "le QR doit etre imprime"
 
 
 @pytest.mark.django_db

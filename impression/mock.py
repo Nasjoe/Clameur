@@ -16,20 +16,34 @@ from impression.escpos_builder import construire_le_ticket
 logger = logging.getLogger(__name__)
 
 LARGEUR_CADRE = 48
+COMMANDE_IMAGE = b"\x1d\x76\x30\x00"
 
 
 def decoder_escpos(octets: bytes) -> list[str]:
     """Extrait le texte lisible d'un flux ESC/POS.
 
     On ne cherche pas a interpreter les commandes : on garde les suites
-    d'octets imprimables et decodables en UTF-8. L'URL du QR code apparait
-    ainsi naturellement, puisqu'elle voyage en clair dans sa commande.
-    / Keeps printable UTF-8 runs; the QR payload shows up on its own.
+    d'octets imprimables et decodables en UTF-8. Seule exception, les images
+    (`GS v 0`) : leurs octets sont sautes et resumes en « [image LxH] ».
+    / Keeps printable UTF-8 runs; images are skipped and summarised.
     """
     lignes: list[str] = []
     tampon = bytearray()
 
-    for octet in octets:
+    position = 0
+    while position < len(octets):
+        if octets.startswith(COMMANDE_IMAGE, position):
+            morceau = _vider(tampon)
+            if morceau:
+                lignes.append(morceau)
+            tampon.clear()
+            octets_par_ligne = octets[position + 4] + 256 * octets[position + 5]
+            hauteur = octets[position + 6] + 256 * octets[position + 7]
+            lignes.append(f"[image {octets_par_ligne * 8}x{hauteur}]")
+            position += 8 + octets_par_ligne * hauteur
+            continue
+        octet = octets[position]
+        position += 1
         if octet == 0x0A:  # saut de ligne
             lignes.append(_vider(tampon))
             tampon.clear()
@@ -82,5 +96,7 @@ class MockBackend(PrinterBackend):
         for ligne in decoder_escpos(octets):
             cadre.append("| " + ligne[: LARGEUR_CADRE - 2].ljust(LARGEUR_CADRE - 2) + " |")
         cadre.append("+" + "-" * LARGEUR_CADRE + "+")
-        logger.info("Ticket (mock) :\n%s", "\n".join(cadre))
+        # Le QR est une image : son adresse n'apparait plus dans le texte.
+        # / The QR code is an image: its address is logged separately.
+        logger.info("Ticket (mock) :\n%s\nQR : %s", "\n".join(cadre), url_capsule)
         return f"mock_{capsule.uuid}_{reference}" if reference else f"mock_{capsule.uuid}"

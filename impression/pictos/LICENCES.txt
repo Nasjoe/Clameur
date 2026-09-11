@@ -1,0 +1,55 @@
+LES PICTOS DU QR DES TICKETS
+============================
+
+Un picto est tire au hasard pour chaque ticket et dessine par son QR code
+(impression/qart.py). Les fichiers sont des rendus PNG 400x400 des SVG
+d'origine ; sur le ticket, ils sont en outre reduits et fondus dans le QR.
+Le prefixe du nom de fichier donne la source.
+
+
+ph__*  —  Phosphor Icons, graisse « fill » (52 pictos)
+------------------------------------------------------
+https://phosphoricons.com
+
+MIT License
+
+Copyright (c) 2023 Phosphor Icons
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+
+game-icons__*  —  game-icons.net (44 pictos)
+--------------------------------------------
+https://game-icons.net — licence CC BY 3.0,
+https://creativecommons.org/licenses/by/3.0/
+Modifications : rendus en PNG, puis reduits et fondus dans un QR code.
+
+Delapouite (25) : billed-cap, camping-tent, carabiner, cliff-crossing,
+  dutch-bike, forest, forest-camp, hiking, light-backpack, mountain-road,
+  oak-leaf, propeller-beanie, river, rope-bridge, rope-coil, skier,
+  sleeping-bag, squirrel, summits, trail, water-flask, waterfall,
+  winter-gloves, winter-hat, wood-cabin
+
+Lorc (15) : boot-prints, boots, maple-leaf, mountains, mountaintop,
+  mushroom, oak, owl, peaks, pine-tree, spotted-mushroom, sunrise,
+  treasure-map, valley, walking-boot
+
+Caro Asercion (3) : deer, fox, mountain-climbing
+
+Skoll (1) : goat

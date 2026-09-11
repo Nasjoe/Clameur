@@ -8,7 +8,8 @@ et t'écoute.
 > poèmes déposés dans les rues de Cerclon — un tract sonore comme forme de
 > résistance. Ce projet leur emprunte son nom et son geste.
 
-**Licence : AGPL-3.0.**
+**Licence : AGPL-3.0**, sauf `impression/qart.py` (BSD) et les pictos
+d'`impression/pictos/` (MIT et CC BY 3.0) — voir [Crédits](#crédits).
 
 ---
 
@@ -20,8 +21,13 @@ Affiche (QR fixe)  →  /nouvelle   ←  le téléphone du visiteur
    ↓ publier
    ├─→ un ticket sort de l'imprimante thermique posée à côté
    └─→ transcription, titre et mots-clés, en tâche de fond
-Le ticket porte le QR de /c/<uuid>  →  la page d'écoute
+Le ticket porte le QR de /c/<code court>  →  /c/<uuid>, la page d'écoute
 ```
+
+Le QR du ticket **dessine un picto**, tiré au hasard parmi 96 (vélo,
+montagne, bonnet…), grâce à l'algorithme QArt de Russ Cox : le code reste
+entièrement valide. Il encode une adresse courte, les 8 premiers caractères de
+l'UUID, pour laisser plus de modules au dessin.
 
 Le visiteur enregistre **avec son propre téléphone** : la borne n'est qu'une
 affiche et une imprimante. Pas de micro à nettoyer, pas d'écran à protéger.
@@ -112,7 +118,7 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make start` | lance la pile, selon `DEBUG` |
 | `make journaux` · `make arreter` | suivre, arrêter |
 | `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
-| `make test` | les 165 tests |
+| `make test` | les 199 tests |
 | `make lint` | style du code |
 | `make constellation` | recalcule les positions du ciel — **en sommeil** |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
@@ -174,6 +180,24 @@ Le projet est hébergeur au sens de la LCEN. Le retrait existe à deux mains :
 retire n'importe laquelle sur signalement. Retirer n'est pas effacer : la
 clameur quitte la liste, et le ticket déjà collé mène à une page qui l'explique
 — jamais un 404 nu.
+
+## Crédits
+
+- **QR codes qui dessinent** : `impression/qart.py` est un portage Python de
+  [rsc.io/qr](https://github.com/rsc/qr) de Russ Cox (algorithme
+  [QArt](https://research.swtch.com/qart)), © 2009 The Go Authors, licence BSD
+  à 3 clauses reproduite en tête du fichier.
+- **Pictos** ([`impression/pictos/`](impression/pictos), textes de licence et
+  auteur de chaque picto dans `LICENCES.txt`) :
+  - 52 pictos de [Phosphor Icons](https://phosphoricons.com), © 2023 Phosphor
+    Icons, licence MIT ;
+  - 44 pictos de [game-icons.net](https://game-icons.net), par Delapouite,
+    Lorc, Caro Asercion et Skoll, licence
+    [CC BY 3.0](https://creativecommons.org/licenses/by/3.0/) — rendus en PNG,
+    puis réduits et fondus dans le QR.
+
+Ces crédits figurent aussi sur la page des mentions légales, pour qui trouve
+un ticket.
 
 ## État
 

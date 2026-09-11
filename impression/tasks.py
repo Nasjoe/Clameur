@@ -7,6 +7,7 @@ from celery import shared_task
 from django.conf import settings
 from django.urls import reverse
 
+from capsules.models import LONGUEUR_DU_CODE_COURT
 from impression.mock import MockBackend
 from impression.models import JobImpression, StatutJob
 from impression.sunmi_cloud import SunmiCloudBackend
@@ -27,7 +28,10 @@ def choisir_le_backend(reglages):
 
 
 def url_de_la_capsule(capsule) -> str:
-    chemin = reverse("capsules:lire_capsule", args=[capsule.uuid])
+    """L'adresse imprimee dans le QR du ticket, sous sa forme courte.
+    / The address printed in the ticket's QR code, in its short form."""
+    code = capsule.uuid.hex[:LONGUEUR_DU_CODE_COURT]
+    chemin = reverse("capsules:lire_par_code_court", args=[code])
     return f"{settings.URL_PUBLIQUE.rstrip('/')}{chemin}"
 
 

@@ -7,6 +7,13 @@ ticket, pas un bouchon.
 / Building is separate from sending, so the mock truly tests the real ticket.
 """
 
+import logging
+import random
+from pathlib import Path
+
+import numpy as np
+
+from impression.qart import dessiner_le_qr
 from impression.sunmi_cloud_printer import (
     ALIGN_CENTER,
     ALIGN_LEFT,
@@ -14,10 +21,22 @@ from impression.sunmi_cloud_printer import (
     SunmiCloudPrinter,
 )
 
+logger = logging.getLogger(__name__)
+
 # Largeur de la photo sur le ticket, en points. Deux tiers de la laize en
 # 80 mm : assez grand pour etre regarde, assez petit pour ne pas devorer le
 # rouleau. / Photo width in dots: two thirds of an 80 mm roll.
 LARGEUR_PHOTO = 384
+
+# Les pictos que le QR dessine, un tire au hasard par ticket. Credits dans
+# LICENCES.txt du meme dossier. / One pictogram drawn at random per ticket.
+DOSSIER_DES_PICTOS = Path(__file__).resolve().parent / "pictos"
+
+# 4 modules blancs autour du code : la norme QR l'exige pour le lire.
+# 7 points par module = 0,9 mm en 203 dpi, soit un QR de 57 mm en 80 mm.
+# / Quiet zone required by the QR standard; 7 dots = 0.9 mm per module.
+ZONE_DE_SILENCE = 4
+POINTS_PAR_MODULE_MAX = 7
 
 
 def construire_le_ticket(capsule, dots_par_ligne: int, url_capsule: str) -> bytes:
@@ -72,7 +91,7 @@ def construire_le_ticket(capsule, dots_par_ligne: int, url_capsule: str) -> byte
     ticket.appendText(f"{_duree_lisible(capsule.duree_secondes)}\n")
     ticket.lineFeed(2)
 
-    ticket.appendQRcode(module_size=6, ec_level=1, text=url_capsule)
+    _poser_le_qr(ticket, url_capsule, dots_par_ligne)
     ticket.lineFeed()
 
     ticket.appendText("Scanne. Ecoute.\n")
@@ -81,6 +100,44 @@ def construire_le_ticket(capsule, dots_par_ligne: int, url_capsule: str) -> byte
     ticket.cutPaper(full_cut=False)
 
     return ticket.orderData
+
+
+def _poser_le_qr(ticket, url_capsule: str, dots_par_ligne: int) -> None:
+    """Le QR qui dessine un picto ; a defaut, le QR natif de l'imprimante.
+
+    Un ticket sans QR lisible est le pire echec du parcours : toute panne ici
+    retombe sur le QR natif, jamais sur une exception.
+    / Any failure falls back to the printer's own QR code.
+    """
+    try:
+        picto = random.choice(sorted(DOSSIER_DES_PICTOS.glob("*.png")))
+        grille = dessiner_le_qr(url_capsule, picto)
+        ticket.appendRawData(_en_image_raster(grille, dots_par_ligne))
+    except Exception:
+        logger.warning("QR image impossible, repli sur le QR natif", exc_info=True)
+        ticket.appendQRcode(module_size=6, ec_level=1, text=url_capsule)
+
+
+def _en_image_raster(grille, dots_par_ligne: int) -> bytes:
+    """La grille du QR en commande `GS v 0` : un bit par point, 1 = noir.
+
+    Ecrite ici plutot que par `appendImage`, qui avale en silence toute image
+    qu'il n'arrive pas a ouvrir : le ticket sortirait sans QR, et sans erreur.
+    / Written directly: appendImage silently drops images it cannot open.
+    """
+    avec_silence = np.pad(grille, ZONE_DE_SILENCE, constant_values=False)
+    points_par_module = min(POINTS_PAR_MODULE_MAX, dots_par_ligne // avec_silence.shape[0])
+    if points_par_module < 1:
+        raise ValueError(f"{dots_par_ligne} points par ligne : trop etroit pour le QR")
+    points = avec_silence.repeat(points_par_module, axis=0).repeat(points_par_module, axis=1)
+    lignes = np.packbits(points, axis=1)
+    hauteur, octets_par_ligne = lignes.shape
+    return (
+        b"\x1d\x76\x30\x00"
+        + octets_par_ligne.to_bytes(2, "little")
+        + hauteur.to_bytes(2, "little")
+        + lignes.tobytes()
+    )
 
 
 def _duree_lisible(secondes: int) -> str:

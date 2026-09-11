@@ -287,6 +287,26 @@ def _attacher_les_tags(capsule, mots) -> None:
 
 
 @require_GET
+def lire_par_code_court(request, code):
+    """Le code court du ticket mene a la page de la capsule.
+
+    Jamais a un brouillon : la redirection donnerait son UUID complet, qui
+    suffit a le publier. Sur un doublon ancien, la premiere capsule creee
+    gagne : son ticket est colle depuis le plus longtemps.
+    / Never to a draft (its full UUID is enough to publish it); oldest wins.
+    """
+    capsule = (
+        Capsule.objects.exclude(statut=StatutCapsule.BROUILLON)
+        .filter(uuid__startswith=code)
+        .order_by("creee_le")
+        .first()
+    )
+    if capsule is None:
+        raise Http404
+    return redirect("capsules:lire_capsule", uuid=capsule.uuid)
+
+
+@require_GET
 def lire_capsule(request, uuid):
     capsule = get_object_or_404(
         Capsule.objects.select_related("reglages").prefetch_related("tags_de_capsule__tag"),

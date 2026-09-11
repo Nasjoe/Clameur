@@ -39,6 +39,19 @@
     {% translate "L'enregistrement sonore, la photo si tu en as joint une, le pseudo et les mots-clés que tu as saisis. Rien d'autre : ni compte, ni position, ni identifiant publicitaire." %}
   </p>
 
+  <h2>{% translate "Crédits" %}</h2>
+  <p class="doux">
+    {% translate "Le QR des tickets dessine un picto grâce à l'algorithme QArt de Russ Cox" %}
+    (<a href="https://github.com/rsc/qr">rsc.io/qr</a>, © 2009 The Go Authors, {% translate "licence BSD" %}).
+  </p>
+  <p class="doux">
+    {% translate "Pictos :" %}
+    <a href="https://phosphoricons.com">Phosphor Icons</a> (© 2023 Phosphor Icons, {% translate "licence MIT" %}) ;
+    <a href="https://game-icons.net">game-icons.net</a>, {% translate "par Delapouite, Lorc, Caro Asercion et Skoll" %},
+    <a href="https://creativecommons.org/licenses/by/3.0/deed.fr">{% translate "licence CC BY 3.0" %}</a>
+    — {% translate "rendus en PNG, puis réduits et fondus dans le QR." %}
+  </p>
+
   <p style="margin-top: var(--space-2xl)">
     <a class="porte porte--fantome" href="{% url 'capsules:liste' %}">
       {% translate "Retour à la constellation" %}
