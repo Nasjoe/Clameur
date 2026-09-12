@@ -329,6 +329,13 @@ def lire_capsule(request, uuid):
                 (capsule.transcription_raw or {}).get("segments") or []
             ),
             "tags": _mots_cles(capsule),
+            # L'APERCU D'UN LIEN EST UNE CHAINE : il ne peut porter ni balise ni
+            # distinction d'origine. On joint donc les noms ici, plutot que de
+            # demander au gabarit un filtre pour extraire une cle.
+            # / A link preview is plain text: the names are joined here.
+            "tags_en_texte": " · ".join(
+                mot["nom"] for mot in _mots_cles(capsule)
+            ),
             "duree": _duree_lisible(capsule.duree_secondes),
         },
     )
@@ -718,19 +725,31 @@ def decrire_une_clameur(capsule) -> dict:
     }
 
 
-def _mots_cles(capsule) -> list[str]:
-    """Les mots-cles a lire, sans doublon et dans l'ordre d'ajout.
+def _mots_cles(capsule) -> list[dict]:
+    """Les mots-cles a lire : leur nom, et s'ils viennent du modele.
 
-    L'auteur ecrit « quartier », le modele trouve « quartier » : la fiche
-    affichait « · quartier · quartier ». Les deux origines restent distinctes
-    en base — elles ne se melangent jamais, c'est le §10 de la spec — mais la
-    ligne qu'on lit, elle, ne repete pas. `dict.fromkeys` dedoublonne sans
-    perdre l'ordre. / Deduplicated for reading only; the two origins stay
-    separate in the database.
+    UN MOT PROPOSE PAR LE MODELE N'EST PAS LA PAROLE DE L'AUTEUR, et l'ecran
+    doit le dire. Les deux origines sont distinctes en base — c'est le §10 de
+    la spec — et le ciel les distingue depuis toujours ; la fiche, elle, les
+    affichait cote a cote sans rien : on lisait « photo · souvenir · odeur »
+    alors que l'auteur n'avait ecrit que le premier.
+
+    L'auteur ecrit « quartier », le modele trouve « quartier » : on ne repete
+    pas le mot, et il compte pour CELUI DE L'AUTEUR — il l'a bien ecrit.
+    / A machine keyword is not the author's word, and the screen must say so.
+      When both carry the same word, it counts as the author's.
     """
-    return list(dict.fromkeys(
-        lien.tag.nom for lien in capsule.tags_de_capsule.all()
-    ))
+    par_nom: dict[str, bool] = {}
+    for lien in capsule.tags_de_capsule.all():
+        de_la_machine = lien.origine == TagDeCapsule.MACHINE
+        if lien.tag.nom in par_nom:
+            par_nom[lien.tag.nom] = par_nom[lien.tag.nom] and de_la_machine
+        else:
+            par_nom[lien.tag.nom] = de_la_machine
+    return [
+        {"nom": nom, "de_la_machine": de_la_machine}
+        for nom, de_la_machine in par_nom.items()
+    ]
 
 
 def _duree_lisible(secondes: int) -> str:

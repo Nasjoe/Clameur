@@ -78,6 +78,34 @@ def test_une_clameur_retiree_ou_en_brouillon_n_est_pas_dans_la_liste(client, cor
     assert str(brouillon.uuid) not in page
 
 
+@pytest.mark.django_db
+def test_la_fiche_distingue_le_mot_de_l_auteur_de_celui_du_modele(client, reglages):
+    """UN MOT PROPOSÉ PAR LE MODÈLE N'EST PAS LA PAROLE DE L'AUTEUR.
+
+    Les deux origines sont distinctes en base — c'est le §10 de la spec — et le
+    ciel les distingue déjà à l'écran. La fiche les affichait côte à côte, sans
+    rien : on lisait « photo · souvenir · odeur » alors que l'auteur n'avait
+    écrit que le premier.
+    / A machine keyword is not the author's own word.
+    """
+    clameur = une_clameur(reglages, titre="La boulangerie", pseudo="Ibrahim")
+    for nom, origine in (("pain", TagDeCapsule.AUTEUR), ("nostalgie", TagDeCapsule.MACHINE)):
+        TagDeCapsule.objects.create(
+            capsule=clameur, tag=Tag.objects.create(nom=nom), origine=origine
+        )
+
+    page = client.get("/").content.decode()
+
+    # Le mot du modèle est ENVELOPPÉ, celui de l'auteur ne l'est pas : c'est
+    # exactement la distinction qu'on teste. Un mot d'auteur s'écrit en texte
+    # nu dans la ligne de méta.
+    # / The model's word is wrapped, the author's is not.
+    assert "pain" in page, "le mot de l'auteur doit s'afficher"
+    assert ">nostalgie</span>" in page, "le mot du modèle doit être distingué"
+    assert ">pain</span>" not in page, "le mot de l'auteur ne doit pas être marqué"
+    assert "proposé par la machine" in page
+
+
 # ----------------------------------------------------------------- le ciel
 
 @pytest.mark.django_db

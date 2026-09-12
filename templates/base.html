@@ -17,6 +17,16 @@
   {# La couleur du papier, pour que la barre du navigateur ne jure pas. #}
   <meta name="theme-color" content="#1c110c">
 
+  {% comment %} RECHARGER PLUTÔT QUE RESTAURER UN INSTANTANÉ. HTMX garde une copie
+     du `body` avant chaque remplacement et la remet au bouton Retour : le SVG du
+     ciel revenait alors en clone inerte, et tous les écouteurs du JavaScript
+     pointaient des éléments détachés du document. Avec cette option, un cache
+     manqué provoque une vraie requête ; `hx-history="false"` sur la recherche
+     fait qu'il est toujours manqué.
+     / Reload rather than restore: the restored body is an inert clone, and every
+       listener then points at detached nodes. {% endcomment %}
+  <meta name="htmx-config" content='{"refreshOnHistoryMiss": true}'>
+
   {% comment %}
     NE PAS INDEXER. Une clameur est deposee pour un mur, pas pour un moteur de
     recherche. Le robots.txt le dit aux robots qui le lisent AVANT de charger

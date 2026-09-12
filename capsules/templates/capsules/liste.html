@@ -50,7 +50,12 @@
      / Renamed to avoid the global .etiquette class, which uppercases. */
   #ciel .nom-de-region {
     font-family: var(--font-display); font-weight: 700; fill: var(--color-ink);
+    /* `non-scaling-stroke` : l'épaisseur est en unités du viewBox, donc sur un
+       panneau étroit le halo tombait sous le pixel et le nom se perdait dans le
+       relief. C'est lui qui tient le contraste, il doit garder son épaisseur.
+       / The stroke is in viewBox units: on a narrow panel the halo vanished. */
     paint-order: stroke; stroke: oklch(0.19 0.022 45 / 0.75); stroke-width: 4px;
+    vector-effect: non-scaling-stroke;
     /* Pas de curseur de main, et le doigt traverse : un nom de région dit où
        l'on est, il ne se clique pas. Seules les étoiles répondent.
        / No pointer cursor, no hit area: only the stars respond. */
@@ -67,9 +72,14 @@
   /* Une rangée : la dérive, puis la roue. Rayon concentrique — la pilule
      extérieure vaut la pilule intérieure plus le padding.
      / One row: the drift, then the cog. Concentric radii. */
+  /* LA ROUE PASSE A GAUCHE, et les commandes sont bornées : à droite du bouton
+     de dérive, elle sortait de l'écran sur un téléphone. Le panneau des
+     réglages s'ouvre donc lui aussi vers la gauche.
+     / The cog goes left: on the right of the drift button it ran off screen. */
   .commandes {
     position: absolute; left: var(--space-md); bottom: var(--space-md);
     display: flex; align-items: center; gap: var(--space-xs);
+    max-width: calc(100% - 2 * var(--space-md));
     background: oklch(0.19 0.022 45 / 0.86); border: 1px solid var(--color-trait);
     border-radius: var(--radius-pilule); padding: var(--space-2xs);
   }
@@ -94,7 +104,7 @@
      déplié vers le bas, comme le fait un `details` par défaut, il sortirait
      du cadre. / The controls sit at the bottom: the panel must open upward. */
   .reglages-panneau {
-    position: absolute; right: 0; bottom: calc(100% + var(--space-xs));
+    position: absolute; left: 0; bottom: calc(100% + var(--space-xs));
     display: flex; flex-direction: column; gap: var(--space-xs);
     width: max-content; max-width: 15rem;
     background: var(--color-paper-2); border: 1px solid var(--color-trait);
@@ -246,6 +256,11 @@
                 border-color var(--dur-court) var(--ease-out);
   }
   .clameur:hover { background: var(--color-paper-3); border-color: var(--astre-sourd); }
+  /* LA CLAMEUR EN COURS SE VOIT. `aria-current` portait l'information pour les
+     lecteurs d'écran, et aucune règle ne la rendait visible : après le clin
+     d'œil, plus rien ne disait laquelle on écoutait.
+     / aria-current carried the information; nothing showed it. */
+  .clameur[aria-current="true"] { border-color: var(--astre); }
 
   .clameur-tete {
     display: flex; gap: var(--space-sm); align-items: baseline;
@@ -267,6 +282,10 @@
     display: block; color: var(--color-ink-doux); font-size: var(--text-sm);
     font-variant-numeric: tabular-nums;
   }
+  /* Le même vocabulaire que les noms de région du ciel : italique et encre
+     ténue pour ce que le modèle a proposé, encre pleine pour ce que l'auteur a
+     écrit. / The same visual language as the sky's region names. */
+  .mot-machine { font-style: italic; color: var(--color-ink-tenu); }
 
   .puits-lecteur { margin-top: var(--space-sm); }
   .lecteur-de-fiche { width: 100%; height: 2.2rem; }
@@ -387,20 +406,31 @@
        il ne défile jamais hors de vue. On vient d'abord pour lire les
        clameurs ; le ciel se déploie à la demande.
        / Always visible, folded by default: the list comes first. */
+    /* `svh` ET NON `dvh` : `dvh` suit la barre d'adresse, qui se replie au
+       défilement — le panneau grandissait alors de vingt pixels pendant qu'on
+       défilait, la liste sautait sous le doigt et la transition l'animait.
+       C'est la dernière variante du bug qui faisait clignoter la page.
+       `svh` est la hauteur du plus petit viewport : elle ne bouge jamais.
+       / svh, not dvh: dvh follows the address bar, so the panel grew mid-scroll. */
     .panneau-ciel {
       order: -1;
-      position: sticky; top: 0; z-index: 2; height: 26dvh;
+      position: sticky; top: 0; z-index: 2; height: 26svh;
       border-bottom: 1px solid var(--color-trait);
       transition: height var(--dur-moyen) var(--ease-out);
     }
     /* Le grand format s'arrête à 78 % : une fiche doit rester visible en bas,
        sinon plus rien ne dit qu'il y a une liste sous la carte.
        / 78 %, never 100 %: one card must remain, or the list disappears. */
-    .panneau-ciel.grand { height: 78dvh; }
+    .panneau-ciel.grand { height: 78svh; }
 
     .commandes {
       left: var(--space-xs); bottom: var(--space-xs); padding: var(--space-xs);
     }
+
+    /* QUARANTE-QUATRE PIXELS : la taille d'un doigt. En dessous, on ne touche
+       plus, on vise. / Forty-four pixels: a fingertip, not a target. */
+    .roue { width: 44px; height: 44px; }
+    .choix button, .deriver { min-height: 44px; }
 
     /* À DROITE, ET NON AU CENTRE : les commandes de couleur occupent déjà le
        coin gauche, et le pouce droit atteint mieux ce bord. Elle vit au bord
@@ -411,29 +441,22 @@
        trois hauteurs obligerait à deviner ce qui vient ensuite ; deux flèches
        disent où l'on va, et s'éteignent quand il n'y a plus de cran.
        / Two arrows say where you are going; one cycling button would not. */
+    /* TOUT EST DECLARE ICI, RIEN N'EST HERITE. Un `button` sans couleur ni
+       fond prend le style du navigateur : sur Firefox mobile, fond gris et
+       texte noir — le bouton paraissait cassé, et il l'était.
+       / A button with no colour of its own takes the browser's: grey on black. */
     .poignee {
-      display: flex; align-items: center; gap: var(--space-2xs);
+      display: flex; align-items: center; gap: var(--space-xs);
       position: absolute; right: var(--space-xs); bottom: var(--space-2xs);
-      padding: var(--space-2xs);
+      min-height: 44px; padding: 0 var(--space-md);
       background: oklch(0.19 0.022 45 / 0.86);
       border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
+      color: var(--color-ink-doux); font: inherit; font-size: var(--text-xs);
+      cursor: pointer;
+      transition: color var(--dur-court) var(--ease-out);
     }
-    .poignee button {
-      display: flex; align-items: center; justify-content: center;
-      width: 40px; height: 40px; border-radius: 50%;
-      background: transparent; border: 0; cursor: pointer;
-      color: var(--color-ink-doux);
-      transition: color var(--dur-court) var(--ease-out),
-                  background var(--dur-court) var(--ease-out);
-    }
-    .poignee button:hover { color: var(--color-ink); background: var(--color-paper-3); }
-    .poignee button:focus-visible {
-      outline: 2px solid var(--color-focus); outline-offset: 2px;
-    }
-    /* Éteint plutôt que caché : la commande garde sa place, et l'œil n'a pas à
-       rechercher l'autre flèche qui aurait bougé.
-       / Dimmed, not hidden: the control keeps its place. */
-    .poignee button:disabled { color: var(--color-ink-tenu); opacity: .35; cursor: default; }
+    .poignee:hover { color: var(--color-ink); }
+    .poignee:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
 
     /* Le même triangle que le dépliant d'une fiche : un vocabulaire déjà
        connu du visiteur, et six lignes de CSS au lieu d'une icône.
@@ -442,10 +465,9 @@
       width: 0; height: 0; flex: none;
       border-left: 6px solid transparent; border-right: 6px solid transparent;
       border-bottom: 7px solid currentColor;
+      transition: transform var(--dur-court) var(--ease-out);
     }
-    .poignee-signal.vers-le-bas {
-      border-bottom: 0; border-top: 7px solid currentColor;
-    }
+    .panneau-ciel.grand .poignee-signal { transform: rotate(180deg); }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -511,6 +533,11 @@
          hx-trigger="input changed delay:300ms, search"
          hx-target="#resultats"
          hx-push-url="true"
+         {% comment %} Pas d'instantané de la page dans l'historique : restauré, le
+            ciel revient en copie inerte et le JavaScript parle à des éléments
+            détachés. Le Retour refait donc une vraie requête.
+            / No history snapshot: the restored sky is an inert clone. {% endcomment %}
+         hx-history="false"
          hx-indicator=".chercher .attente">
   <span class="attente">{% translate "…" %}</span>
 </form>
@@ -526,6 +553,13 @@
 </section>
 
 <section class="panneau-ciel" aria-label="{% translate 'Le ciel des clameurs' %}">
+  {% comment %} LES COMMANDES AVANT LES ÉTOILES, dans le document : chaque étoile
+     est atteignable au clavier, et il y en a jusqu'à six cents — placées avant,
+     elles obligeaient à les traverser toutes pour atteindre la dérive ou la
+     poignée. Elles sont posées en absolu : rien ne change à l'écran.
+     / Controls first in the document: up to six hundred stars are focusable. {% endcomment %}
+  {% include "capsules/_commandes_du_ciel.html" %}
+
   {% comment %} Les quatre groupes sont dans CET ordre : le relief au fond, les
      étiquettes au-dessus de tout. Un ordre différent enterre les noms sous les
      courbes. / Relief at the back, labels on top. {% endcomment %}
@@ -537,68 +571,11 @@
     <g id="etiquettes"></g>
   </svg>
 
-  <div class="commandes">
-    <button type="button" class="deriver" id="deriver" aria-pressed="false"
-            data-depart="{% translate 'Laisser dériver' %}"
-            data-arret="{% translate 'Arrêter la dérive' %}">
-      {% translate "Laisser dériver" %}
-    </button>
-
-    {% comment %} `details` PLUTÔT QU'UN BOUTON ET DU JAVASCRIPT : le navigateur
-       gère l'ouverture, l'état et le clavier, et le projet parle déjà ce
-       langage avec ses transcriptions dépliables. Les trois choix ne sont pas
-       ce qu'on vient chercher en arrivant : ils encombraient le bas du ciel.
-       / A details element: the browser handles open state and keyboard. {% endcomment %}
-    <details class="reglages">
-      <summary class="roue">
-        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-          <circle cx="12" cy="12" r="3.2" fill="none"
-                  stroke="currentColor" stroke-width="2"/>
-          <g stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none">
-            <path d="M12 2.6v3"/><path d="M12 18.4v3"/>
-            <path d="M2.6 12h3"/><path d="M18.4 12h3"/>
-            <path d="M5.3 5.3 7.4 7.4"/><path d="M16.6 16.6l2.1 2.1"/>
-            <path d="M18.7 5.3 16.6 7.4"/><path d="M7.4 16.6 5.3 18.7"/>
-          </g>
-        </svg>
-        <span class="sr-only">{% translate "Réglages des couleurs" %}</span>
-      </summary>
-
-      <div class="reglages-panneau">
-        <p class="titre-commande">{% translate "Colorer par" %}</p>
-        <div class="choix" id="choix-couleur"
-             data-legende-duree="{% translate 'Couleur : durée · plus clair, plus récent' %}"
-             data-legende-voix="{% translate 'Couleur : nombre de voix · plus clair, plus récent' %}"
-             data-legende-heure="{% translate 'Couleur : heure du dépôt · plus clair, plus récent' %}">
-          <button type="button" data-encodage="duree" aria-pressed="true">{% translate "Durée" %}</button>
-          <button type="button" data-encodage="voix" aria-pressed="false">{% translate "Voix" %}</button>
-          <button type="button" data-encodage="heure" aria-pressed="false">{% translate "Heure" %}</button>
-        </div>
-        <p class="legende" id="legende"></p>
-      </div>
-    </details>
-
-    {% comment %} Ce que la dérive dit à qui n'a pas l'écran. {% endcomment %}
-    <p id="annonce-derive" class="sr-only" aria-live="polite"></p>
-  </div>
-
   {% comment %} TROIS HAUTEURS, UNE SEULE COMMANDE : elle agrandit, puis elle
      revient. Deux hauteurs seulement : un bouton qui ferait le tour de trois
      obligerait à deviner ce qui vient ensuite.
      Invisible sur le bureau, où le ciel occupe déjà toute sa colonne.
      / One control, one job: it enlarges and it comes back. {% endcomment %}
-  {% comment %} DEUX HAUTEURS, UN BOUTON. Le ciel s'ouvre en bandeau — on vient
-     d'abord pour lire les clameurs — et la poignée le déploie quand on veut le
-     regarder. Aucune hauteur ne dépend du défilement : changer la hauteur d'un
-     élément du flux pendant qu'on défile déplaçait la page sous le doigt.
-     / Two heights, one button, and nothing tied to scrolling. {% endcomment %}
-  <button type="button" class="poignee" id="poignee-ciel"
-          aria-expanded="false" aria-controls="ciel"
-          data-agrandir="{% translate 'Agrandir le ciel' %}"
-          data-reduire="{% translate 'Réduire le ciel' %}">
-    <span class="poignee-signal" aria-hidden="true"></span>
-    <span class="poignee-mot">{% translate "Agrandir le ciel" %}</span>
-  </button>
 </section>
 </div>
 

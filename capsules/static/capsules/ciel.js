@@ -282,7 +282,13 @@
 
   function choisir(uuid, origine) {
     if (choisie && choisie !== uuid) {
-      document.getElementById(`clameur-${choisie}`)?.setAttribute("aria-current", "false");
+      const ancienneFiche = document.getElementById(`clameur-${choisie}`);
+      ancienneFiche?.setAttribute("aria-current", "false");
+      // ON RETIRE AUSSI LE CLIN D'OEIL. Sous `prefers-reduced-motion` il n'est
+      // pas une animation qui se termine mais un fond qui reste : sans cela,
+      // une derive de vingt clameurs laissait vingt fiches allumees.
+      // / Under reduced motion the blink is a standing colour, not an animation.
+      ancienneFiche?.classList.remove("designee");
       const ancienne = pastilles.get(choisie);
       if (ancienne) {
         ancienne.classList.remove("choisie");
@@ -305,8 +311,13 @@
     if (origine === "ciel" && fiche) {
       clignoter(fiche);
       if (surMobile()) {
+        // SOUS LA CARTE, LA FICHE EST INVISIBLE. Le ciel est colle en haut et
+        // couvre jusqu'aux trois quarts de l'ecran : viser le milieu de la
+        // fenetre amenait la fiche derriere lui, ou elle clignotait pour rien.
+        // / The sky is sticky and covers up to three quarters of the screen.
         window.scrollTo({
-          top: fiche.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.45,
+          top: fiche.getBoundingClientRect().top + window.scrollY
+               - panneauCiel.offsetHeight - 12,
           behavior: GLISSEMENT,
         });
       } else {
@@ -620,17 +631,16 @@
   poserLesEtiquettes();
 
   /*
-   * DEUX PASSES DE PLUS, ET ELLES NE SONT PAS DU LUXE. La taille des noms se
-   * calcule depuis l'echelle du ciel, et leur boite de collision avec : place
-   * avant que le panneau ait sa taille definitive, tout est mesure trop grand
-   * et l'on ecarte des noms qui tiennent. Mesure du 2026-09-12 : huit noms
-   * places au chargement, quatorze une fois la mise en page stable.
-   * La premiere passe attend l'image suivante, la seconde les polices, qui
-   * changent la hauteur de l'en-tete donc celle du panneau.
-   * / Labels are sized from the sky's scale: laid out before the panel has its
-   *   final size, everything is measured too large. Eight against fourteen.
+   * UNE PASSE DE PLUS QUAND LES POLICES SONT PRETES. La taille des noms se
+   * calcule depuis l'echelle du ciel, et leur boite de collision avec : la
+   * police reelle est plus large que celle de repli, et change donc le nombre
+   * de noms qui tiennent — sans que le SVG bouge, donc sans que l'observateur
+   * de taille ne s'en apercoive.
+   * L'image suivante, elle, est deja couverte : un `ResizeObserver` delivre
+   * une premiere notification des l'observation, apres la mise en page.
+   * / One more pass once fonts are ready: the real face is wider, and the
+   *   size observer cannot see a change the SVG never makes.
    */
-  requestAnimationFrame(() => poserLesEtiquettes());
   document.fonts?.ready?.then(() => poserLesEtiquettes());
 
   // Le bouton actif doit refleter le choix retenu en memoire, sinon la page

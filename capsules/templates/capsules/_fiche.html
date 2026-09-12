@@ -20,7 +20,9 @@
       <span class="clameur-nom">{% if clameur.capsule.titre %}{{ clameur.capsule.titre }}{% else %}{{ clameur.capsule.pseudo|default:_("Anonyme") }}{% endif %}</span>
       <span class="clameur-meta">
         {% if clameur.capsule.titre and clameur.capsule.pseudo %}· {{ clameur.capsule.pseudo }}{% endif %}
-        · {{ clameur.duree }}{% for tag in clameur.tags %} · {{ tag }}{% endfor %}
+        {% comment %} Les mots du modèle en italique : ils ne sont pas la parole de
+           l'auteur. / The model's words in italics: not the author's own. {% endcomment %}
+        · {{ clameur.duree }}{% for mot in clameur.tags %} · {% if mot.de_la_machine %}<span class="mot-machine" title="{% translate 'Mot-clé proposé par la machine' %}">{{ mot.nom }}</span>{% else %}{{ mot.nom }}{% endif %}{% endfor %}
       </span>
     </span>
   </a>

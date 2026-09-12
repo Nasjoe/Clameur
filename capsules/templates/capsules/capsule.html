@@ -11,7 +11,10 @@
   / Exactly what the paper ticket says. The transcript stays on the page.
 {% endcomment %}
 {% block og_titre %}{% if capsule.pseudo %}{% blocktranslate with pseudo=capsule.pseudo %}Une clameur de {{ pseudo }}{% endblocktranslate %}{% else %}{% translate "Une clameur" %}{% endif %}{% endblock %}
-{% block og_description %}{% if tags %}{{ tags|join:" · " }} · {% endif %}{{ duree }}{% endblock %}
+{% comment %} `tags_en_texte` et non `tags` : un aperçu de lien est une chaîne, il
+   ne peut porter ni balise ni distinction d'origine. La vue la prépare.
+   / A link preview is plain text: the view joins the names. {% endcomment %}
+{% block og_description %}{% if tags_en_texte %}{{ tags_en_texte }} · {% endif %}{{ duree }}{% endblock %}
 {% block og_image %}{% if capsule.photo %}
   {% comment %}
     Ni largeur ni hauteur : les lire ouvrirait le fichier a chaque affichage
@@ -47,6 +50,14 @@
     border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
     padding: var(--space-2xs) var(--space-sm);
     font-size: var(--text-sm); color: var(--color-ink-doux);
+  }
+  /* Le même vocabulaire que les noms de région du ciel : italique et encre
+     ténue pour ce que le modèle a proposé. Un mot-clé qu'on n'a pas écrit ne
+     doit pas se lire comme sa propre parole.
+     / The same visual language as the sky's region names. */
+  .etiquettes li.mot-machine {
+    font-style: italic; color: var(--color-ink-tenu);
+    border-style: dashed;
   }
 
   .puits-lecteur {
@@ -161,7 +172,11 @@
   </div>
 
   {% if tags %}
-    <ul class="etiquettes">{% for tag in tags %}<li>{{ tag }}</li>{% endfor %}</ul>
+    {% comment %} Les mots du modèle en italique : ils ne sont pas la parole de
+       l'auteur. / The model's words in italics. {% endcomment %}
+    {% comment %} Tout sur une ligne : coupée, l'indentation entrerait dans la
+       balise rendue. / One line: indentation would land inside the tag. {% endcomment %}
+    <ul class="etiquettes">{% for mot in tags %}<li{% if mot.de_la_machine %} class="mot-machine" title="{% translate 'Mot-clé proposé par la machine' %}"{% endif %}>{{ mot.nom }}</li>{% endfor %}</ul>
   {% endif %}
 
   {% comment %}

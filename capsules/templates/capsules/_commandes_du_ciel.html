@@ -1,0 +1,70 @@
+{% load i18n %}
+{% comment %}
+  Les commandes du ciel, DANS UN GABARIT A PART pour une seule raison : elles
+  doivent venir AVANT le `<svg>` dans le document. Chaque étoile est atteignable
+  au clavier, et il y en a jusqu'à six cents — placées après, elles obligeaient à
+  traverser tout le corpus pour atteindre la dérive ou la poignée. Elles sont
+  posées en absolu : à l'écran, rien ne change.
+  / Kept apart so they can precede the <svg>: up to six hundred stars are
+    focusable, and tabbing through all of them to reach a button is no.
+{% endcomment %}
+<div class="commandes">
+  {% comment %} LA ROUE D'ABORD, puis la dérive : à droite du bouton, elle
+     sortait de l'écran sur un téléphone.
+     / The cog first: on the button's right it ran off screen. {% endcomment %}
+  {% comment %} `details` PLUTÔT QU'UN BOUTON ET DU JAVASCRIPT : le navigateur
+     gère l'ouverture, l'état et le clavier, et le projet parle déjà ce langage
+     avec ses transcriptions dépliables. Les trois choix ne sont pas ce qu'on
+     vient chercher en arrivant : ils encombraient le bas du ciel.
+     / A details element: the browser handles open state and keyboard. {% endcomment %}
+  <details class="reglages">
+    <summary class="roue">
+      <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+        <circle cx="12" cy="12" r="3.2" fill="none"
+                stroke="currentColor" stroke-width="2"/>
+        <g stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none">
+          <path d="M12 2.6v3"/><path d="M12 18.4v3"/>
+          <path d="M2.6 12h3"/><path d="M18.4 12h3"/>
+          <path d="M5.3 5.3 7.4 7.4"/><path d="M16.6 16.6l2.1 2.1"/>
+          <path d="M18.7 5.3 16.6 7.4"/><path d="M7.4 16.6 5.3 18.7"/>
+        </g>
+      </svg>
+      <span class="sr-only">{% translate "Réglages des couleurs" %}</span>
+    </summary>
+
+    <div class="reglages-panneau">
+      <p class="titre-commande">{% translate "Colorer par" %}</p>
+      <div class="choix" id="choix-couleur"
+           data-legende-duree="{% translate 'Couleur : durée · plus clair, plus récent' %}"
+           data-legende-voix="{% translate 'Couleur : nombre de voix · plus clair, plus récent' %}"
+           data-legende-heure="{% translate 'Couleur : heure du dépôt · plus clair, plus récent' %}">
+        <button type="button" data-encodage="duree" aria-pressed="true">{% translate "Durée" %}</button>
+        <button type="button" data-encodage="voix" aria-pressed="false">{% translate "Voix" %}</button>
+        <button type="button" data-encodage="heure" aria-pressed="false">{% translate "Heure" %}</button>
+      </div>
+      <p class="legende" id="legende"></p>
+    </div>
+  </details>
+
+  <button type="button" class="deriver" id="deriver" aria-pressed="false"
+          data-depart="{% translate 'Laisser dériver' %}"
+          data-arret="{% translate 'Arrêter la dérive' %}">
+    {% translate "Laisser dériver" %}
+  </button>
+
+  {% comment %} Ce que la dérive dit à qui n'a pas l'écran. {% endcomment %}
+  <p id="annonce-derive" class="sr-only" aria-live="polite"></p>
+</div>
+
+{% comment %} DEUX HAUTEURS, UN BOUTON. Le ciel s'ouvre en bandeau — on vient
+   d'abord pour lire les clameurs — et la poignée le déploie quand on veut le
+   regarder. Aucune hauteur ne dépend du défilement : changer la hauteur d'un
+   élément du flux pendant qu'on défile déplaçait la page sous le doigt.
+   / Two heights, one button, and nothing tied to scrolling. {% endcomment %}
+<button type="button" class="poignee" id="poignee-ciel"
+        aria-expanded="false" aria-controls="ciel"
+        data-agrandir="{% translate 'Agrandir le ciel' %}"
+        data-reduire="{% translate 'Réduire le ciel' %}">
+  <span class="poignee-signal" aria-hidden="true"></span>
+  <span class="poignee-mot">{% translate "Agrandir le ciel" %}</span>
+</button>
