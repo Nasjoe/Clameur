@@ -266,11 +266,11 @@ prévient — le ciel ne dit alors plus grand-chose.
 
 **Les clameurs publiées entre le 2026-09-01 et le 2026-09-12 n'ont pas de
 vecteur** : la tâche `embarquer` n'était pas enfilée pendant cette période.
-Elles figurent dans la liste, sans étoile. La commande les compte à chaque
-passage ; pour leur en calculer un :
+Elles figurent dans la liste, sans étoile. `make constellation` les compte à
+chaque passage ; pour leur en calculer un :
 
 ```bash
-make constellation ARGS=--rattraper
+make vecteurs
 ```
 
 **Un appel payant à `mistral-embed` par clameur** — c'est pourquoi rien ne part

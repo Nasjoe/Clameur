@@ -149,11 +149,24 @@ lint:  ## Vérifie le style du code
 # de prod : une cible qui ne marcherait qu'en developpement obligerait a
 # recopier la commande a la main sur le serveur, ce que faisait la passation.
 # / One target for both modes: a dev-only target means retyping it on the server.
-constellation:  ## Force un calcul du ciel (ARGS=--rattraper pour les vecteurs manquants)
+constellation:  ## Force un calcul du ciel : relief, régions, positions manquantes
 ifeq ($(EN_PRODUCTION),)
-	$(DANS_WEB) projeter_la_constellation $(ARGS)
+	$(DANS_WEB) projeter_la_constellation
 else
-	$(COMPOSE_PROD) exec -T web python manage.py projeter_la_constellation $(ARGS)
+	$(COMPOSE_PROD) exec -T web python manage.py projeter_la_constellation
+endif
+
+# UNE CIBLE, ET NON UNE OPTION A PASSER. `make constellation --rattraper` ne
+# peut pas marcher : make prend `--rattraper` pour une de ses propres options
+# et s'arrete avant d'avoir rien fait. Et `ARGS=--rattraper` s'oublie.
+# UN APPEL PAYANT PAR CLAMEUR : c'est pourquoi le calcul des vecteurs ne part
+# jamais tout seul. `make constellation` se contente de les compter.
+# / A target, not an option: make would swallow `--rattraper` as its own.
+vecteurs:  ## Calcule les vecteurs manquants — un appel payant par clameur
+ifeq ($(EN_PRODUCTION),)
+	$(DANS_WEB) projeter_la_constellation --rattraper
+else
+	$(COMPOSE_PROD) exec -T web python manage.py projeter_la_constellation --rattraper
 endif
 
 console:  ## Crée un compte opérateur pour /admin/
@@ -181,4 +194,4 @@ verifier: ## Contrôle la configuration de déploiement (éditeur, contact, http
 
 .PHONY: aide start demarrer-en-developpement demarrer-en-production journaux \
         arreter services migrate migrations fixture run test lint constellation \
-        console imprimante purge rebuild verifier
+        vecteurs console imprimante purge rebuild verifier

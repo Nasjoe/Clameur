@@ -150,6 +150,24 @@
     background: transparent; border: 2px solid var(--color-ink-tenu);
   }
 
+  /* --- L'avancement de la dérive ---------------------------------------
+     LE LECTEUR DE LA DÉRIVE N'EST PAS DANS LA PAGE : c'est un élément audio
+     créé en JavaScript, le seul qu'iOS accepte d'enchaîner sans nouveau
+     geste. Sa barre de progression n'existe donc nulle part, et rien ne
+     disait où l'on en était. On peint la nôtre sur la fiche en cours.
+     `overflow: hidden` le temps de la dérive : sans lui, la barre dépasserait
+     des coins arrondis de la fiche.
+     / The drift's player is not in the page: we paint our own bar. */
+  .clameur.en-derive { overflow: hidden; }
+  .clameur.en-derive::after {
+    content: ""; position: absolute; left: 0; top: 0; height: 3px;
+    width: calc(var(--avancement, 0) * 100%);
+    background: var(--astre);
+    /* Aucune transition : la valeur arrive quatre fois par seconde, et une
+       transition ferait traîner la barre derrière le son.
+       / No transition: the value lands four times a second. */
+  }
+
   /* --- Le clin d'œil ---------------------------------------------------
      TOUCHER UNE ÉTOILE DOIT SE VOIR DANS LA LISTE. La fiche défile jusqu'au
      milieu du panneau, mais rien ne disait laquelle venait d'arriver : on

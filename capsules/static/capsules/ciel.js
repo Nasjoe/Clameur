@@ -449,6 +449,7 @@
     // fenetre zoomee dans un bandeau de deux centimetres, ou plus rien ne
     // serait reconnaissable. / Leaving the tall state forgets the pan.
     vue = null;
+    vueEntiere = null;
     panneauCiel.classList.toggle("grand", grand);
     panneauCiel.classList.toggle("replie", replie);
 
@@ -478,11 +479,7 @@
     // ramene pas quelqu'un au point de depart parce qu'il a touche une etoile.
     // / A hand-moved view wins: we never yank it back.
     if (vue) {
-      const hauteur = vue.cote * ratioDuCadre();
-      svg.setAttribute(
-        "viewBox",
-        `${vue.x.toFixed(0)} ${vue.y.toFixed(0)} ${vue.cote.toFixed(0)} ${hauteur.toFixed(0)}`
-      );
+      ecrireLaVue();
       poserLesEtiquettes();
       return;
     }
@@ -521,43 +518,68 @@
    * le doigt doit continuer de faire defiler la page.
    * / One finger pans, two pinch, and only in the tall state.
    */
-  const COTE_MINIMAL = 220;        // en deca, on ne voit plus de paysage
+  const ZOOM_MAXIMAL = 4;          // au-dela, on ne voit plus de paysage
   const GLISSEMENT_MINIMAL = 8;    // en pixels : en dessous, c'est un appui
 
-  let vue = null;      // {x, y, cote} des qu'on a deplace ou zoome a la main
+  let vue = null;          // {x, y, largeur, hauteur} des qu'on touche la carte
+  let vueEntiere = null;   // le cadrage d'ou l'on part : on ne dezoome pas plus
   let aGlisse = false;
   let depart = null;
   const doigts = new Map();
-
-  function ratioDuCadre() {
-    const cadre = svg.getBoundingClientRect();
-    return cadre.width ? cadre.height / cadre.width : 1;
-  }
 
   const milieu = (points) => ({
     x: points.reduce((somme, p) => somme + p.x, 0) / points.length,
     y: points.reduce((somme, p) => somme + p.y, 0) / points.length,
   });
 
+  const ecartEntre = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+  function ecrireLaVue() {
+    svg.setAttribute(
+      "viewBox",
+      `${vue.x.toFixed(0)} ${vue.y.toFixed(0)} `
+      + `${vue.largeur.toFixed(0)} ${vue.hauteur.toFixed(0)}`
+    );
+  }
+
   function memoriserLeDepart() {
     const points = [...doigts.values()];
+    const matrice = svg.getScreenCTM();
     depart = {
       vue: { ...vue },
       milieu: milieu(points),
-      ecart: points.length === 2 ? Math.hypot(
-        points[0].x - points[1].x, points[0].y - points[1].y
-      ) : 0,
+      ecart: points.length >= 2 ? ecartEntre(points[0], points[1]) : 0,
+      /*
+       * L'ECHELLE SE LIT DANS LA MATRICE, ET SE FIGE POUR TOUT LE GESTE.
+       * Sous `preserveAspectRatio`, le dessin est mis a l'echelle par le PLUS
+       * PETIT des deux rapports : `largeur / largeurDuCadre` est faux des que
+       * le panneau n'a pas le rapport de la vue, et le paysage n'avance alors
+       * ni a la vitesse ni dans la proportion du doigt. Figee au depart, elle
+       * evite en plus qu'un pincement en cours ne change la conversion sous
+       * nos pieds.
+       * / Read from the matrix, frozen for the gesture.
+       */
+      parPixel: matrice ? 1 / matrice.a : 1,
     };
   }
 
   function bornerLaVue() {
-    vue.cote = Math.min(COTE, Math.max(COTE_MINIMAL, vue.cote));
-    const hauteur = vue.cote * ratioDuCadre();
-    // `Math.min(0, …)` : quand la fenetre est plus haute que le ciel, la borne
-    // devient negative et centre au lieu de coller en haut.
-    // / When the window is taller than the sky, the bound centres it.
-    vue.x = Math.max(Math.min(vue.x, COTE - vue.cote), Math.min(0, COTE - vue.cote));
-    vue.y = Math.max(Math.min(vue.y, COTE - hauteur), Math.min(0, COTE - hauteur));
+    // ON NE SORT JAMAIS DU CADRAGE DE DEPART, ni en zoom ni en deplacement :
+    // sans cette borne, on derivait dans le vide, hors du ciel, sans rien pour
+    // se raccrocher. La vue garde aussi le RAPPORT du cadrage de depart, sinon
+    // `preserveAspectRatio` ajouterait ses propres bandes et fausserait
+    // l'echelle. / We never leave the starting frame, and we keep its ratio.
+    const rapport = vueEntiere.hauteur / vueEntiere.largeur;
+    vue.largeur = Math.min(
+      vueEntiere.largeur,
+      Math.max(vueEntiere.largeur / ZOOM_MAXIMAL, vue.largeur)
+    );
+    vue.hauteur = vue.largeur * rapport;
+
+    const dans = (valeur, taille, debut, etendue) =>
+      Math.max(debut, Math.min(valeur, debut + etendue - taille));
+    vue.x = dans(vue.x, vue.largeur, vueEntiere.x, vueEntiere.largeur);
+    vue.y = dans(vue.y, vue.hauteur, vueEntiere.y, vueEntiere.hauteur);
   }
 
   svg.addEventListener("pointerdown", (evenement) => {
@@ -566,8 +588,14 @@
     doigts.set(evenement.pointerId, { x: evenement.clientX, y: evenement.clientY });
     if (doigts.size === 1) aGlisse = false;
     if (!vue) {
+      // LE CADRAGE EN COURS DEVIENT LA REFERENCE, tel quel : le reprendre a
+      // l'identique evite que la carte ne saute au premier contact.
+      // / The current framing becomes the reference, so nothing jumps.
       const boite = svg.viewBox.baseVal;
-      vue = { x: boite.x, y: boite.y, cote: boite.width };
+      vueEntiere = {
+        x: boite.x, y: boite.y, largeur: boite.width, hauteur: boite.height,
+      };
+      vue = { ...vueEntiere };
     }
     memoriserLeDepart();
   });
@@ -578,40 +606,31 @@
 
     const points = [...doigts.values()];
     const centre = milieu(points);
-    const parPixel = depart.vue.cote / (svg.getBoundingClientRect().width || 1);
 
     if (points.length >= 2 && depart.ecart > 0) {
-      const ecart = Math.hypot(points[0].x - points[1].x, points[0].y - points[1].y);
-      const cote = depart.vue.cote * (depart.ecart / (ecart || 1));
-      // ON ZOOME AUTOUR DU CENTRE DE L'ECRAN, et non du milieu exact des deux
-      // doigts : a cette echelle la difference ne se sent pas, et cela epargne
-      // une vingtaine de lignes de changement de repere.
-      // / Zooming around the screen centre saves a coordinate conversion.
-      vue.x = depart.vue.x + (depart.vue.cote - cote) / 2;
-      vue.y = depart.vue.y + (depart.vue.cote - cote) * ratioDuCadre() / 2;
-      vue.cote = cote;
+      const facteur = depart.ecart / (ecartEntre(points[0], points[1]) || 1);
+      const largeur = depart.vue.largeur * facteur;
+      const hauteur = depart.vue.hauteur * facteur;
+      // Le centre de l'ecran reste fixe : la carte grandit sur place au lieu
+      // de fuir vers un coin. / The screen centre stays put.
+      vue.x = depart.vue.x + (depart.vue.largeur - largeur) / 2;
+      vue.y = depart.vue.y + (depart.vue.hauteur - hauteur) / 2;
+      vue.largeur = largeur;
+      vue.hauteur = hauteur;
     } else {
       // Le paysage suit le doigt : on deplace la fenetre a l'oppose du geste.
       // / The landscape follows the finger: the window moves the other way.
-      vue.x = depart.vue.x - (centre.x - depart.milieu.x) * parPixel;
-      vue.y = depart.vue.y - (centre.y - depart.milieu.y) * parPixel;
+      vue.x = depart.vue.x - (centre.x - depart.milieu.x) * depart.parPixel;
+      vue.y = depart.vue.y - (centre.y - depart.milieu.y) * depart.parPixel;
     }
 
-    if (Math.hypot(centre.x - depart.milieu.x, centre.y - depart.milieu.y)
-        > GLISSEMENT_MINIMAL) {
-      aGlisse = true;
-    }
+    if (ecartEntre(centre, depart.milieu) > GLISSEMENT_MINIMAL) aGlisse = true;
 
     bornerLaVue();
     // On ecrit le cadrage SANS replacer les etiquettes : quinze mesures de
     // texte par image rendraient le geste poussif. Elles se replacent au
-    // relachement. / No label layout mid-gesture: fifteen text measurements
-    // per frame would make it sluggish.
-    const hauteur = vue.cote * ratioDuCadre();
-    svg.setAttribute(
-      "viewBox",
-      `${vue.x.toFixed(0)} ${vue.y.toFixed(0)} ${vue.cote.toFixed(0)} ${hauteur.toFixed(0)}`
-    );
+    // relachement. / No label layout mid-gesture.
+    ecrireLaVue();
   });
 
   function relacher(evenement) {
@@ -639,6 +658,32 @@
   let deriveActive = false;
   let trace = null;
   let points = [];
+  let ficheEnDerive = null;
+
+  function marquerLaDerive(uuid) {
+    oublierLaDerive();
+    ficheEnDerive = document.getElementById(`clameur-${uuid}`);
+    ficheEnDerive?.classList.add("en-derive");
+  }
+
+  function oublierLaDerive() {
+    if (!ficheEnDerive) return;
+    ficheEnDerive.classList.remove("en-derive");
+    ficheEnDerive.style.removeProperty("--avancement");
+    ficheEnDerive = null;
+  }
+
+  // LA SEULE PROGRESSION VISIBLE DE LA DERIVE. Le lecteur qui joue n'est pas
+  // dans la page : la barre des fiches reste a zero, puisqu'elles ne jouent
+  // pas. On alimente donc la notre avec l'avancement reel du son.
+  // / The playing element is not in the page; this is the only visible progress.
+  lecteurDeLaDerive.addEventListener("timeupdate", () => {
+    const duree = lecteurDeLaDerive.duration;
+    if (!ficheEnDerive || !duree || !isFinite(duree)) return;
+    ficheEnDerive.style.setProperty(
+      "--avancement", (lecteurDeLaDerive.currentTime / duree).toFixed(3)
+    );
+  });
 
   function fichesDeLaListe() {
     /*
@@ -674,6 +719,7 @@
     lecteurDeLaDerive.play().catch(() => arreterLaDerive());
 
     choisir(clameur.uuid, "ciel");
+    marquerLaDerive(clameur.uuid);
     compterUneEcoute(clameur.uuid);
     if (annonce) annonce.textContent = clameur.titre;
 
@@ -685,6 +731,7 @@
     if (!deriveActive) return;
     deriveActive = false;
     lecteurDeLaDerive.pause();
+    oublierLaDerive();
     bouton.textContent = bouton.dataset.depart;
     bouton.setAttribute("aria-pressed", "false");
     trace?.remove();

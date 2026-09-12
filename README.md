@@ -135,7 +135,8 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
 | `make test` | les 199 tests |
 | `make lint` | style du code |
-| `make constellation` | force un calcul du ciel ; `ARGS=--rattraper` enfile les vecteurs manquants |
+| `make constellation` | force un calcul du ciel : relief, régions, positions manquantes |
+| `make vecteurs` | calcule les vecteurs manquants — un appel payant par clameur |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
 | `make verifier` | contrôle la configuration de déploiement |
 | `make console` | crée un compte opérateur |
