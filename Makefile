@@ -138,11 +138,23 @@ test: services  ## Lance toute la suite de tests
 lint:  ## Vérifie le style du code
 	$(COMPOSE) run --rm web ruff check .
 
-# A relancer apres chaque vague d'enrichissement : une projection est globale,
-# une nouvelle clameur deplace toutes les autres.
-# / Rerun after each enrichment wave: a projection is global.
-constellation:  ## Recalcule la position des étoiles du ciel
-	$(DANS_WEB) projeter_la_constellation
+# LE CIEL SE RECALCULE TOUT SEUL, deux minutes apres un depot ou un retrait :
+# cette cible ne sert qu'a forcer un calcul quand rien ne l'a declenche — au
+# premier deploiement, ou apres une restauration de sauvegarde.
+# Elle recalcule toujours le relief et les regions ; elle ne redeplace les
+# etoiles que si l'une d'elles attend encore sa position. Elle annonce aussi
+# les clameurs sans vecteur, et `ARGS=--rattraper` enfile leur calcul.
+#
+# UNE SEULE CIBLE POUR LES DEUX MODES. En production elle passe par le compose
+# de prod : une cible qui ne marcherait qu'en developpement obligerait a
+# recopier la commande a la main sur le serveur, ce que faisait la passation.
+# / One target for both modes: a dev-only target means retyping it on the server.
+constellation:  ## Force un calcul du ciel (ARGS=--rattraper pour les vecteurs manquants)
+ifeq ($(EN_PRODUCTION),)
+	$(DANS_WEB) projeter_la_constellation $(ARGS)
+else
+	$(COMPOSE_PROD) exec -T web python manage.py projeter_la_constellation $(ARGS)
+endif
 
 console:  ## Crée un compte opérateur pour /admin/
 	$(DANS_WEB) createsuperuser

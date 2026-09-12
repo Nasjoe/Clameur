@@ -13,7 +13,162 @@
      liste respire un peu plus large, parce qu'une fiche porte un lecteur et
      une ligne de mots-cles en plus de son texte.
      / One centred column, slightly wider than the reading default. */
-  main { max-width: 46rem; }
+  /* Le double écran prend toute la page : les 38rem que `base.html` cale sur
+     `main` n'ont plus de sens quand la liste partage l'écran avec le ciel.
+     / The dual view takes the whole page. */
+  main { max-width: none; padding: 0; }
+
+  .double-ecran {
+    display: grid; grid-template-columns: minmax(320px, 31rem) 1fr;
+    height: 100dvh; overflow: hidden;
+  }
+
+  /* `position: relative` : c'est LUI qui sert de repère à `offsetTop`. Sans
+     lui, la position d'une fiche se mesure depuis le haut du document, et le
+     défilement déclenché par une étoile tombe à côté.
+     / It anchors offsetTop; without it the star-driven scroll misses. */
+  .panneau-liste {
+    position: relative; overflow-y: auto; min-height: 0;
+    padding: var(--space-lg);
+    border-right: 1px solid var(--color-trait);
+    scrollbar-width: thin; scrollbar-color: var(--color-glissiere) transparent;
+  }
+
+  .panneau-ciel { position: relative; min-height: 0; background: var(--color-paper); }
+  #ciel { width: 100%; height: 100%; display: block; touch-action: manipulation; }
+  #ciel .etoile { cursor: pointer; transition: opacity var(--dur-court) var(--ease-out); }
+  /* 0,35 et non 0,1 : une étoile de deux pixels disparaîtrait tout à fait.
+     / A two-pixel star would vanish entirely below this. */
+  #ciel .etoile.pale { opacity: 0.35 !important; }
+  #ciel .etoile.choisie { stroke: var(--color-ink); stroke-width: 2.5; }
+
+  /* `nom-de-region` ET NON `etiquette` : `base.html` porte déjà une classe
+     globale de ce nom, qui met ses libellés en capitales. Le nom d'une région
+     est la parole d'un auteur — on l'affiche comme il l'a écrite.
+     Le halo, lui, n'est pas décoratif : c'est ce qui tient le contraste d'un
+     nom posé sur les courbes claires du relief.
+     / Renamed to avoid the global .etiquette class, which uppercases. */
+  #ciel .nom-de-region {
+    font-family: var(--font-display); font-weight: 700; fill: var(--color-ink);
+    paint-order: stroke; stroke: oklch(0.19 0.022 45 / 0.75); stroke-width: 4px;
+    /* Pas de curseur de main, et le doigt traverse : un nom de région dit où
+       l'on est, il ne se clique pas. Seules les étoiles répondent.
+       / No pointer cursor, no hit area: only the stars respond. */
+    pointer-events: none; user-select: none;
+  }
+  #ciel .nom-de-region.machine {
+    font-style: italic; font-weight: 500; fill: var(--color-ink-tenu);
+  }
+  #ciel .trace {
+    fill: none; stroke: var(--color-ambre); stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round; opacity: 0.75;
+  }
+
+  /* Une rangée : la dérive, puis la roue. Rayon concentrique — la pilule
+     extérieure vaut la pilule intérieure plus le padding.
+     / One row: the drift, then the cog. Concentric radii. */
+  .commandes {
+    position: absolute; left: var(--space-md); bottom: var(--space-md);
+    display: flex; align-items: center; gap: var(--space-xs);
+    background: oklch(0.19 0.022 45 / 0.86); border: 1px solid var(--color-trait);
+    border-radius: var(--radius-pilule); padding: var(--space-2xs);
+  }
+
+  /* --- Les réglages, derrière la roue ---------------------------------- */
+  .reglages { position: relative; }
+  .roue {
+    display: flex; align-items: center; justify-content: center;
+    width: 2.1rem; height: 2.1rem; border-radius: 50%;
+    color: var(--color-ink-doux); cursor: pointer;
+    list-style: none;   /* pas de triangle de `summary` */
+    transition: color var(--dur-court) var(--ease-out),
+                background var(--dur-court) var(--ease-out);
+  }
+  .roue::-webkit-details-marker { display: none; }
+  .roue svg { width: 1.15rem; height: 1.15rem; }
+  .roue:hover { color: var(--color-ink); background: var(--color-paper-3); }
+  .reglages[open] .roue { color: var(--color-ink); background: var(--color-paper-3); }
+  .roue:focus-visible { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+
+  /* LE PANNEAU S'OUVRE VERS LE HAUT. Les commandes vivent en bas de l'écran :
+     déplié vers le bas, comme le fait un `details` par défaut, il sortirait
+     du cadre. / The controls sit at the bottom: the panel must open upward. */
+  .reglages-panneau {
+    position: absolute; right: 0; bottom: calc(100% + var(--space-xs));
+    display: flex; flex-direction: column; gap: var(--space-xs);
+    width: max-content; max-width: 15rem;
+    background: var(--color-paper-2); border: 1px solid var(--color-trait);
+    border-radius: var(--radius-md); padding: var(--space-sm);
+  }
+  .titre-commande {
+    font-size: var(--text-xs); text-transform: uppercase;
+    letter-spacing: var(--tracking-label); color: var(--color-ink-tenu); margin: 0;
+  }
+  .choix { display: flex; gap: var(--space-2xs); flex-wrap: wrap; }
+  .choix button {
+    padding: var(--space-2xs) var(--space-sm); border-radius: var(--radius-pilule);
+    border: 1px solid var(--color-trait); background: transparent;
+    color: var(--color-ink-doux); font: inherit; font-size: var(--text-sm);
+    cursor: pointer;
+    transition: background var(--dur-court) var(--ease-out);
+  }
+  .choix button:hover { background: var(--color-paper-3); color: var(--color-ink); }
+  .choix button[aria-pressed="true"] {
+    background: var(--color-ink); color: var(--color-sur-accent);
+    border-color: var(--color-ink);
+  }
+  .legende { font-size: var(--text-xs); color: var(--color-ink-tenu); margin: 0; }
+  .deriver {
+    padding: var(--space-2xs) var(--space-sm); border-radius: var(--radius-pilule);
+    border: var(--rule-porte) solid var(--color-braise); background: var(--color-braise);
+    color: var(--color-sur-accent); font: inherit; font-weight: 600;
+    font-size: var(--text-sm); cursor: pointer;
+    box-shadow: 3px 3px 0 0 var(--color-braise-ombre);
+    transition: transform var(--dur-court) var(--ease-out),
+                box-shadow var(--dur-court) var(--ease-out);
+  }
+  .deriver:hover {
+    transform: translate(3px, 3px); box-shadow: 0 0 0 0 var(--color-braise-ombre);
+  }
+
+  /* --- La poignée du ciel ---------------------------------------------
+     Elle n'existe que sur mobile : sur le bureau, le ciel a sa colonne et
+     personne n'a besoin de l'agrandir.
+     / Mobile only: on a desktop the sky already has its own column. */
+  .poignee { display: none; }
+
+  /* Lu par les lecteurs d'écran, jamais affiché. / Read aloud, never shown. */
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; overflow: hidden;
+    clip-path: inset(50%); white-space: nowrap;
+  }
+
+  /* Une clameur sans vecteur est dans la liste, sans étoile : la pastille
+     creuse le dit, au lieu de la faire passer pour une clameur placée.
+     / A hollow dot says "no star yet" instead of faking one. */
+  .clameur.sans-etoile .pastille-liste {
+    background: transparent; border: 2px solid var(--color-ink-tenu);
+  }
+
+  /* --- Le clin d'œil ---------------------------------------------------
+     TOUCHER UNE ÉTOILE DOIT SE VOIR DANS LA LISTE. La fiche défile jusqu'au
+     milieu du panneau, mais rien ne disait laquelle venait d'arriver : on
+     cherchait des yeux. Deux battements dans sa propre couleur, puis plus
+     rien — la sélection, elle, reste marquée par la bordure.
+     C'est un `@keyframes` et non une transition : une séquence qui joue une
+     fois et se termine, pas un état qu'on quitte.
+     / Tapping a star must show in the list: two blinks, then nothing. */
+  @keyframes clin-d-oeil {
+    0%, 100% { background: var(--color-paper-2); }
+    35% { background: var(--astre-sourd); }
+  }
+  .clameur.designee { animation: clin-d-oeil 0.5s var(--ease-in-out) 2; }
+
+  @media (prefers-reduced-motion: reduce) {
+    /* Sans mouvement, la couleur reste : l'information ne doit pas dépendre
+       de l'animation. / The information must not depend on the motion. */
+    .clameur.designee { animation: none; background: var(--astre-sourd); }
+  }
 
   .entete { margin-bottom: var(--space-lg); }
   .entete h1 {
@@ -192,10 +347,88 @@
     .clameur { padding: var(--space-sm); border-radius: var(--radius-md); }
     .chercher input { font-size: var(--text-md); }
   }
+
+  /* --- Le bandeau mobile -----------------------------------------------
+     DEUX ÉTATS, pas une hauteur continue : une hauteur pilotée au pixel près
+     demande un calcul par image et rejoue le placement des étiquettes à
+     chaque fois, alors que l'œil ne distingue que « déployé » et « bandeau ».
+     / Two states: a per-pixel height would re-run label layout every frame. */
+  @media (max-width: 800px) {
+    /* `flex` ET NON `block` : c'est `order` qui fait passer le ciel devant la
+       liste. Dans le DOM il vient après — il doit y rester, pour que la liste
+       soit lue en premier par un lecteur d'écran et par un robot d'aperçu.
+       / flex, because `order` is what puts the sky first visually while the
+         list stays first in the document. */
+    .double-ecran {
+      display: flex; flex-direction: column; height: auto; overflow: visible;
+    }
+    .panneau-liste {
+      border-right: 0; overflow: visible; padding: var(--space-md);
+    }
+    /* TOUJOURS VISIBLE : collé en haut de l'écran, il ne défile jamais hors de
+       vue — il se contente de se replier en bandeau.
+       / Always visible: it never scrolls away, it only folds into a band. */
+    .panneau-ciel {
+      order: -1;
+      position: sticky; top: 0; z-index: 2; height: 50dvh;
+      border-bottom: 1px solid var(--color-trait);
+      transition: height var(--dur-moyen) var(--ease-out);
+    }
+    .panneau-ciel.replie { height: 22dvh; }
+    /* Le grand format s'arrête à 78 % : une fiche doit rester visible en bas,
+       sinon plus rien ne dit qu'il y a une liste sous la carte.
+       / 78 %, never 100 %: one card must remain, or the list disappears. */
+    .panneau-ciel.grand { height: 78dvh; }
+
+    /* LE DOIGT NE NOUS APPARTIENT QU'EN GRAND FORMAT. Prendre le geste au
+       navigateur empêche de faire défiler la page en partant du ciel : on ne
+       le fait donc que là où la carte est grande — là où l'on a demandé à
+       l'explorer. Ailleurs, le doigt continue de défiler.
+       / We only take the gesture where the map is large. */
+    .panneau-ciel.grand #ciel { touch-action: none; }
+
+    .commandes {
+      left: var(--space-xs); bottom: var(--space-xs); padding: var(--space-xs);
+    }
+
+    /* À DROITE, ET NON AU CENTRE : les commandes de couleur occupent déjà le
+       coin gauche, et le pouce droit atteint mieux ce bord. Elle vit au bord
+       bas du ciel — là où l'œil cherche la limite entre les deux écrans — et
+       suit sa hauteur sans qu'on ait à la calculer.
+       / Bottom right: the colour controls hold the left corner. */
+    .poignee {
+      display: flex; align-items: center; gap: var(--space-xs);
+      position: absolute; right: var(--space-xs); bottom: var(--space-2xs);
+      min-height: 44px; padding: 0 var(--space-sm);
+      background: oklch(0.19 0.022 45 / 0.86);
+      border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
+      color: var(--color-ink-doux); font: inherit; font-size: var(--text-xs);
+      cursor: pointer;
+      transition: color var(--dur-court) var(--ease-out);
+    }
+    .poignee:hover, .poignee:focus-visible { color: var(--color-ink); }
+
+    /* Le même triangle que le dépliant d'une fiche : un vocabulaire déjà
+       connu du visiteur, et six lignes de CSS au lieu d'une icône.
+       / The same triangle the cards already use. */
+    .poignee-signal {
+      width: 0; height: 0; flex: none;
+      border-left: 5px solid transparent; border-right: 5px solid transparent;
+      border-bottom: 6px solid currentColor;
+      transition: transform var(--dur-court) var(--ease-out);
+    }
+    .panneau-ciel.grand .poignee-signal { transform: rotate(180deg); }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .panneau-ciel { transition: none; }
+  }
 </style>
 {% endblock %}
 
 {% block contenu %}
+<div class="double-ecran">
+<section id="panneau-liste" class="panneau-liste" aria-label="{% translate 'Liste des clameurs' %}">
 <header class="entete">
   <h1>{% translate "Les clameurs" %}</h1>
   {% include "capsules/_compte.html" %}
@@ -262,12 +495,108 @@
     {% include "capsules/_resultats.html" %}
   </div>
 </div>
+</section>
+
+<section class="panneau-ciel" aria-label="{% translate 'Le ciel des clameurs' %}">
+  {% comment %} Les quatre groupes sont dans CET ordre : le relief au fond, les
+     étiquettes au-dessus de tout. Un ordre différent enterre les noms sous les
+     courbes. / Relief at the back, labels on top. {% endcomment %}
+  <svg id="ciel" viewBox="0 0 1000 1000" preserveAspectRatio="xMidYMid meet"
+       role="group" aria-label="{% translate 'Chaque point est une clameur' %}">
+    <g id="relief"></g>
+    <g id="traces"></g>
+    <g id="etoiles"></g>
+    <g id="etiquettes"></g>
+  </svg>
+
+  <div class="commandes">
+    <button type="button" class="deriver" id="deriver" aria-pressed="false"
+            data-depart="{% translate 'Laisser dériver' %}"
+            data-arret="{% translate 'Arrêter la dérive' %}">
+      {% translate "Laisser dériver" %}
+    </button>
+
+    {% comment %} `details` PLUTÔT QU'UN BOUTON ET DU JAVASCRIPT : le navigateur
+       gère l'ouverture, l'état et le clavier, et le projet parle déjà ce
+       langage avec ses transcriptions dépliables. Les trois choix ne sont pas
+       ce qu'on vient chercher en arrivant : ils encombraient le bas du ciel.
+       / A details element: the browser handles open state and keyboard. {% endcomment %}
+    <details class="reglages">
+      <summary class="roue">
+        <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <circle cx="12" cy="12" r="3.2" fill="none"
+                  stroke="currentColor" stroke-width="2"/>
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round" fill="none">
+            <path d="M12 2.6v3"/><path d="M12 18.4v3"/>
+            <path d="M2.6 12h3"/><path d="M18.4 12h3"/>
+            <path d="M5.3 5.3 7.4 7.4"/><path d="M16.6 16.6l2.1 2.1"/>
+            <path d="M18.7 5.3 16.6 7.4"/><path d="M7.4 16.6 5.3 18.7"/>
+          </g>
+        </svg>
+        <span class="sr-only">{% translate "Réglages des couleurs" %}</span>
+      </summary>
+
+      <div class="reglages-panneau">
+        <p class="titre-commande">{% translate "Colorer par" %}</p>
+        <div class="choix" id="choix-couleur"
+             data-legende-duree="{% translate 'Couleur : durée · plus clair, plus récent' %}"
+             data-legende-voix="{% translate 'Couleur : nombre de voix · plus clair, plus récent' %}"
+             data-legende-heure="{% translate 'Couleur : heure du dépôt · plus clair, plus récent' %}">
+          <button type="button" data-encodage="duree" aria-pressed="true">{% translate "Durée" %}</button>
+          <button type="button" data-encodage="voix" aria-pressed="false">{% translate "Voix" %}</button>
+          <button type="button" data-encodage="heure" aria-pressed="false">{% translate "Heure" %}</button>
+        </div>
+        <p class="legende" id="legende"></p>
+      </div>
+    </details>
+
+    {% comment %} Ce que la dérive dit à qui n'a pas l'écran. {% endcomment %}
+    <p id="annonce-derive" class="sr-only" aria-live="polite"></p>
+  </div>
+
+  {% comment %} TROIS HAUTEURS, UNE SEULE COMMANDE : elle agrandit, puis elle
+     revient. Le défilement, lui, replie de son côté — un même bouton qui
+     ferait les trois deviendrait un jeu de devinettes.
+     Invisible sur le bureau, où le ciel occupe déjà toute sa colonne.
+     / One control, one job: it enlarges and it comes back. {% endcomment %}
+  <button type="button" class="poignee" id="poignee-ciel"
+          aria-expanded="false" aria-controls="ciel"
+          data-agrandir="{% translate 'Agrandir le ciel' %}"
+          data-reduire="{% translate 'Réduire le ciel' %}">
+    <span class="poignee-signal" aria-hidden="true"></span>
+    <span class="poignee-mot">{% translate "Agrandir le ciel" %}</span>
+  </button>
+</section>
+</div>
+
+{% comment %} HORS DE #resultats : HTMX l'emporterait au premier swap, et le ciel
+   perdrait ses données dès la première lettre tapée dans la recherche.
+   `json_script` échappe et ne localise jamais — c'est ce qui évite la virgule
+   décimale qui transformait toutes les positions en NaN.
+   / Outside #resultats, or HTMX takes them away on the first keystroke. {% endcomment %}
+{{ grille|json_script:"donnees-grille" }}
+{{ regions|json_script:"donnees-regions" }}
+{{ etoiles|json_script:"donnees-etoiles" }}
 {% endblock %}
 
+{% comment %} `base.html` pose un pied de page sous `main` : gardé, il ferait
+   dépasser les 100dvh du double écran et la page défilerait sur le bureau.
+   / The base footer would push the dual view past 100dvh. {% endcomment %}
+{% block pied %}{% endblock %}
+
 {% block scripts %}
+<script>
+  window.URL_ECOUTE = "{% url 'capsules:compter_une_ecoute' '00000000-0000-0000-0000-000000000000' %}";
+  window.JETON_CSRF = "{{ csrf_token }}";
+</script>
 <script src="{% static 'capsules/vendor/htmx-2.0.6.min.js' %}" defer></script>
 <script src="{% static 'capsules/vendor/htmx-ext-ws.js' %}" defer></script>
 <script src="{% static 'capsules/partage.js' %}" defer></script>
+{% comment %} `d3-array` AVANT `d3-contour` : le paquet UMD du second s'attend à
+   trouver le premier posé sur l'objet `d3`. / d3-array must come first. {% endcomment %}
+<script src="{% static 'capsules/vendor/d3-array-3.2.4.min.js' %}" defer></script>
+<script src="{% static 'capsules/vendor/d3-contour-4.0.2.min.js' %}" defer></script>
+<script src="{% static 'capsules/ciel.js' %}" defer></script>
 <script>
   // Le dialogue natif : quatre lignes suffisent, et `showModal` apporte le
   // voile, le piege au clavier et la fermeture par Echap.

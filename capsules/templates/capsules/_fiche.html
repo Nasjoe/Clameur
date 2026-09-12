@@ -1,8 +1,7 @@
 {% load i18n l10n %}{% localize off %}
-<article class="clameur" id="clameur-{{ clameur.capsule.uuid }}"
+<article class="clameur{% if not clameur.a_une_etoile %} sans-etoile{% endif %}"
+         id="clameur-{{ clameur.capsule.uuid }}"
          data-uuid="{{ clameur.capsule.uuid }}"
-         data-x="{{ clameur.x }}" data-y="{{ clameur.y }}"
-         data-teinte="{{ clameur.teinte }}" data-ecoutes="{{ clameur.capsule.nombre_ecoutes }}"
          style="--astre: oklch(0.76 0.13 {{ clameur.teinte }}); --astre-sourd: oklch(0.32 0.055 {{ clameur.teinte }})">
   <!-- `localize off` EST INDISPENSABLE ICI. En francais, Django rend les
        flottants avec une virgule decimale. Number() renvoie alors NaN, et les

@@ -5,10 +5,15 @@ UN SEUL GROUPE POUR TOUT LE MONDE, et non un groupe par capsule.
 S'abonner a une centaine de groupes couterait une centaine d'allers-retours a
 l'ouverture de la page, pour un volume de messages minuscule : une
 transcription par clameur publiee, quelques-unes par heure au plus fort d'un
-evenement. Chaque page recoit donc tout et n'applique que ce qui la concerne —
-le swap OOB de HTMX ignore silencieusement une cible absente.
-/ One shared group: subscribing to a hundred would cost far more than it saves,
-and HTMX quietly ignores an OOB swap whose target is not on the page.
+evenement. Chaque page recoit donc tout et n'applique que ce qui la concerne.
+
+CE N'EST PAS SILENCIEUX POUR AUTANT. Quand la cible d'un swap OOB n'est pas
+sur la page — une clameur filtree par la recherche, ou supprimee depuis —
+HTMX journalise `htmx:oobErrorNoTarget` dans la console. Rien n'est remplace,
+rien ne casse, mais la console se peuple : ne pas confondre ces lignes avec un
+defaut de la page qui les affiche.
+/ Not silent: HTMX logs htmx:oobErrorNoTarget when the target is absent.
+  Nothing breaks, but do not mistake those lines for a bug in the page.
 """
 
 from channels.generic.websocket import AsyncWebsocketConsumer

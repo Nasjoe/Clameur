@@ -7,6 +7,7 @@ from django.utils.translation import gettext_lazy as _
 from django.utils.translation import ngettext
 
 from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
+from capsules.tasks import programmer_le_recalcul
 
 
 class TagDeCapsuleInline(admin.TabularInline):
@@ -32,6 +33,10 @@ class CapsuleAdmin(admin.ModelAdmin):
         # Le moyen technique de l'obligation de retrait prompt (LCEN).
         # / The technical means of the prompt-takedown obligation.
         nombre = queryset.update(statut=StatutCapsule.RETIREE)
+        # `update()` N'EMET AUCUN SIGNAL : sans cet appel explicite, une clameur
+        # retiree depuis la console resterait au ciel jusqu'au prochain depot.
+        # / queryset.update() emits no signal; the call must be explicit.
+        programmer_le_recalcul()
         self.message_user(
             request,
             ngettext("%d clameur retirée.", "%d clameurs retirées.", nombre) % nombre,
@@ -49,6 +54,10 @@ class CapsuleAdmin(admin.ModelAdmin):
         nombre = queryset.filter(statut=StatutCapsule.RETIREE).update(
             statut=StatutCapsule.PUBLIEE
         )
+        # Republiee, elle doit retrouver une etoile — a une place fraiche, et
+        # non a celle d'une projection d'avant son retrait.
+        # / Republished, it needs a fresh position, not its pre-takedown one.
+        programmer_le_recalcul()
         self.message_user(request, _("%d clameur(s) republiée(s).") % nombre)
 
     @admin.action(description=_("Rejouer l'enrichissement"))

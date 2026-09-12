@@ -7,11 +7,12 @@ import os
 
 from celery import shared_task
 from django.conf import settings
+from django.core.cache import cache
 from django.db import transaction
 from django.utils import timezone
 
 from capsules.diffusion import diffuser_la_transcription
-from capsules.models import Capsule, Tag, TagDeCapsule
+from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
 from capsules.transcription import transcrire_le_fichier
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,15 @@ MOTS_DU_TITRE = 6
 ETAPE_TRANSCRIPTION = "Transcription"
 ETAPE_TAGS = "Extraction des tags"
 ETAPE_EMBEDDING = "Embedding"
+
+VERROU_CIEL = "ciel:programme"
+
+# DEUX MINUTES. Assez pour qu'une rafale de depots ne coute qu'un calcul et que
+# les tags machine soient arrives, assez peu pour qu'une clameur neuve trouve
+# son etoile avant que son auteur ne referme la page.
+# / Two minutes: one computation per burst, and a fresh star before the visitor
+#   closes the page.
+DELAI_RECALCUL = 120
 
 
 def _enfiler(tache, uuid_capsule: str) -> None:
@@ -107,16 +117,13 @@ def transcrire(uuid_capsule: str) -> str:
     # / Deferred to commit: broadcasting earlier could push uncommitted text.
     transaction.on_commit(lambda: diffuser_la_transcription(capsule))
 
-    # UNE SEULE SUITE DEPUIS LE 2026-09-01 : le titre et les mots-cles.
-    # `embarquer` partait aussi d'ici, en parallele. Il est EN SOMMEIL avec la
-    # constellation : la tache existe toujours et se rejoue depuis la console,
-    # mais publier une clameur ne declenche plus aucun calcul de proximite.
-    # La liste ne depend d'aucun vecteur — une clameur y figure des sa
-    # publication, ce que le ciel ne savait pas faire.
-    # / One follow-up since the constellation was shelved. `embarquer` still
-    #   exists and can be replayed, but nothing queues it: the list needs no
-    #   vector, so a clameur appears the moment it is published.
+    # DEUX SUITES EN PARALLELE : le titre et les mots-cles d'un cote, le
+    # vecteur de l'autre. Elles ne se parlent pas et ne s'attendent pas ; c'est
+    # pourquoi chacune ne retire du champ d'erreur partage que le message
+    # qu'elle y a elle-meme ecrit.
+    # / Two follow-ups in parallel; each only clears its own error message.
     _enfiler(taguer, uuid_capsule)
+    _enfiler(embarquer, uuid_capsule)
     return "ok"
 
 
@@ -230,6 +237,9 @@ def taguer(uuid_capsule: str) -> str:
         )
 
     _effacer_l_echec(capsule, ETAPE_TAGS)
+    # Les mots-cles nomment les regions du ciel : de nouveaux tags peuvent
+    # renommer un massif. / Keywords name the sky's regions.
+    programmer_le_recalcul()
     return "ok"
 
 
@@ -274,4 +284,134 @@ def embarquer(uuid_capsule: str) -> str:
     capsule.enrichie_le = timezone.now()
     capsule.save(update_fields=["embedding", "enrichie_le"])
     _effacer_l_echec(capsule, ETAPE_EMBEDDING)
+    # Une clameur de plus a projeter : c'est ce qui lui donnera son etoile.
+    # / One more clameur to project: this is what earns it a star.
+    programmer_le_recalcul()
+    return "ok"
+
+
+def programmer_le_recalcul() -> None:
+    """Programme un recalcul du ciel, au plus un par fenetre.
+
+    N'ECHOUE JAMAIS. Elle est appelee depuis le retrait d'une clameur, qui est
+    une obligation legale : ni un cache muet ni un courtier mort ne doivent
+    empecher un auteur de faire taire sa voix.
+    / Never fails: it is called from the LCEN takedown path.
+    """
+    try:
+        if not cache.add(VERROU_CIEL, 1, DELAI_RECALCUL):
+            return
+    except Exception:
+        logger.warning("cache indisponible : recalcul du ciel enfilé sans verrou")
+
+    try:
+        recalculer_le_ciel.apply_async(countdown=DELAI_RECALCUL)
+    except Exception:
+        logger.exception("enqueue du recalcul du ciel impossible")
+
+
+@shared_task
+def recalculer_le_ciel() -> str:
+    """Recalcule les positions, le relief et les regions.
+
+    SANS ARGUMENT, donc toujours a partir de l'etat frais : la tache est
+    idempotente, ce qu'exige `acks_late`.
+    / No argument: always recomputed from fresh state, as acks_late demands.
+    """
+    # LE VERROU TOMBE EN PREMIER. Une clameur deposee pendant le calcul doit
+    # pouvoir programmer le suivant ; sinon elle attend un depot de plus pour
+    # exister — le defaut meme qui avait fait mettre le ciel en sommeil.
+    # / Released first: a clameur arriving mid-computation must re-arm.
+    try:
+        cache.delete(VERROU_CIEL)
+    except Exception:
+        logger.warning("cache indisponible : verrou du ciel non libéré")
+
+    # Import paresseux : `tasks` est importe par `publication`, et numpy n'a
+    # rien a faire dans un worker web. / Lazy: numpy has no place in a web worker.
+    import numpy as np
+
+    from capsules import ciel as calcul
+    from capsules.models import Ciel
+
+    with transaction.atomic():
+        # `get_solo()` d'abord : on ne verrouille pas une ligne qui n'existe pas.
+        # / get_solo() first: there is no row to lock before the first run.
+        objet = Ciel.get_solo()
+        Ciel.objects.select_for_update().filter(pk=objet.pk).first()
+
+        capsules = list(
+            Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+            .exclude(embedding=None)
+            .prefetch_related("tags_de_capsule__tag")
+        )
+        if capsules:
+            vecteurs = np.vstack([np.asarray(c.embedding, dtype=float) for c in capsules])
+            exploitables = np.isfinite(vecteurs).all(axis=1) & (
+                np.linalg.norm(vecteurs, axis=1) > 0
+            )
+        else:
+            vecteurs = np.empty((0, 0))
+            exploitables = np.zeros(0, dtype=bool)
+
+        # UN VECTEUR ABIME EST SIGNALE DANS L'ADMIN. C'est le masque
+        # `exploitables` qui l'ecarte du calcul, juste au-dessus ; ce message
+        # existe pour que l'operateur sache pourquoi cette clameur n'a pas
+        # d'etoile, au lieu de la chercher en vain dans le ciel.
+        # / The mask already excludes it; this message tells the operator why.
+        for capsule, garde in zip(capsules, exploitables):
+            if not garde and "vecteur" not in capsule.erreur_enrichissement:
+                _noter_l_echec(
+                    capsule, ETAPE_EMBEDDING,
+                    ValueError("vecteur inexploitable, pas d'étoile"),
+                )
+
+        retenues = [c for c, garde in zip(capsules, exploitables) if garde]
+        vecteurs = vecteurs[exploitables] if len(capsules) else vecteurs
+
+        if len(retenues) < 3:
+            Capsule.objects.exclude(position_x=None).update(position_x=None, position_y=None)
+            objet.grille, objet.regions = [], []
+            objet.calcule_le = timezone.now()
+            objet.save(update_fields=["grille", "regions", "calcule_le"])
+            return "trop peu"
+
+        # LE T-SNE NE TOURNE QUE SI QUELQUE CHOSE ATTEND UNE POSITION. Un
+        # retrait ne fait rien entrer : recalculer la projection deplacerait
+        # toutes les etoiles pour rien. / Only project when a star is missing.
+        if any(c.position_x is None for c in retenues):
+            positions = calcul.projeter(vecteurs)
+            for capsule, (x, y) in zip(retenues, positions):
+                capsule.position_x, capsule.position_y = float(x), float(y)
+            Capsule.objects.bulk_update(
+                retenues, ["position_x", "position_y"], batch_size=200
+            )
+        else:
+            positions = np.array([[c.position_x, c.position_y] for c in retenues])
+
+        grille = calcul.densite(positions)
+        if not np.isfinite(grille).all():
+            # SEULE BARRIERE CONTRE LE NAN : `json_script` le serialise tel
+            # quel, et `JSON.parse` casse alors sans un mot dans la console.
+            # / json_script emits NaN verbatim and JSON.parse dies silently.
+            logger.error("grille non finie : ciel laissé vide")
+            objet.grille, objet.regions = [], []
+        else:
+            tags = [
+                [(lien.tag.nom, lien.origine) for lien in c.tags_de_capsule.all()]
+                for c in retenues
+            ]
+            objet.grille = np.round(grille, 3).tolist()
+            objet.regions = calcul.regions(grille, positions, tags)
+
+        # Les positions des capsules qui ne sont plus projetees disparaissent :
+        # une retiree republiee ne doit pas revenir a la place d'une projection
+        # d'avant. / Stale positions go, or a republished capsule lands wrong.
+        Capsule.objects.exclude(
+            uuid__in=[c.uuid for c in retenues]
+        ).exclude(position_x=None).update(position_x=None, position_y=None)
+
+        objet.calcule_le = timezone.now()
+        objet.save(update_fields=["grille", "regions", "calcule_le"])
+
     return "ok"

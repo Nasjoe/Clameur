@@ -52,17 +52,32 @@ si le premier s'est perdu.
 Le **titre** est écrit par la machine, dans le même appel qui extrait les
 mots-clés : rien de plus à saisir avant de publier, et rien de plus à payer.
 
-### Le ciel, en sommeil
+### Le ciel
 
-La page d'accueil montrait un second écran : un ciel où chaque étoile était une
-clameur, placée par proximité sémantique. **Il est en sommeil depuis le
-2026-09-01** — la projection et les vecteurs coûtaient du calcul pour une vue
-dont l'usage restait à prouver, et une clameur fraîchement publiée n'y
-apparaissait pas avant un recalcul lancé à la main.
+La page d'accueil montre un second écran : une **carte topographique** du
+corpus. Le relief dit où les sujets se pressent, les régions portent le nom
+du mot-clé qui les caractérise — celui d'un auteur d'abord, celui de la
+machine à défaut, en italique —, et chaque étoile est une clameur, placée par
+proximité sémantique.
 
-Rien n'a été supprimé : `constellation.html`, son JavaScript, la tâche
-`embarquer` et la commande `make constellation` sont intacts, simplement plus
-appelés. Les vecteurs déjà calculés dorment en base.
+La couleur d'une étoile dit la **durée**, et sa brillance la **fraîcheur** ;
+un sélecteur permet de colorer plutôt par nombre de voix ou par heure du
+dépôt. Toucher n'importe où attrape l'étoile la plus proche. Le bouton
+**« Laisser dériver »** enchaîne les clameurs de proche en proche : quand
+l'une se termine, sa plus proche voisine démarre, et un trait se dessine
+d'étoile en étoile.
+
+**Le ciel se recalcule tout seul.** Deux minutes après un dépôt ou un retrait,
+une tâche de fond reprend les positions, le relief et les noms de régions. Une
+clameur fraîchement publiée figure immédiatement dans la liste, avec une
+pastille creuse, et reçoit son étoile au calcul suivant. `make constellation`
+force un calcul — au premier déploiement, par exemple, où rien ne l'a encore
+déclenché.
+
+Ce ciel était en sommeil du 2026-09-01 au 2026-09-12 : il coûtait du calcul
+pour une vue dont l'usage restait à prouver, et une clameur fraîchement
+publiée n'y apparaissait pas avant un recalcul lancé à la main. C'est
+précisément ce que le recalcul automatique répare.
 
 ## Trois invariants
 
@@ -120,7 +135,7 @@ les URL utiles et ce qui fonctionne sans clé d'API. Les plus courantes :
 | `make fixture` | recrée le corpus de démonstration — **appelle Mistral** |
 | `make test` | les 199 tests |
 | `make lint` | style du code |
-| `make constellation` | recalcule les positions du ciel — **en sommeil** |
+| `make constellation` | force un calcul du ciel ; `ARGS=--rattraper` enfile les vecteurs manquants |
 | `make imprimante` | ticket de test sur une vraie Sunmi |
 | `make verifier` | contrôle la configuration de déploiement |
 | `make console` | crée un compte opérateur |

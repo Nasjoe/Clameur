@@ -346,11 +346,28 @@ class Command(BaseCommand):
             ),
         )
 
-        for nom_de_tag in alea.sample(theme["tags"], alea.randint(1, 2)):
+        mots_de_l_auteur = alea.sample(theme["tags"], alea.randint(1, 2))
+        for nom_de_tag in mots_de_l_auteur:
             tag, _cree = Tag.objects.get_or_create(nom=nom_de_tag)
             TagDeCapsule.objects.get_or_create(
                 capsule=capsule, tag=tag, origine=TagDeCapsule.AUTEUR
             )
+
+        # UN QUART DU CORPUS RECOIT AUSSI DES TAGS MACHINE, pris dans les mots
+        # du theme que l'auteur n'a PAS choisis. Sans eux, le corpus n'en porte
+        # aucun : le ciel ne se replierait jamais sur un mot propose par la
+        # machine, et l'italique qui le signale ne serait exerce ni par les
+        # tests ni a l'oeil. On ne rappelle pas le modele pour autant — ce
+        # serait vingt-cinq requetes pour une propriete qu'on sait fabriquer.
+        # / A quarter also gets machine tags, taken from the theme words the
+        #   author did not pick: otherwise the italic fallback is never exercised.
+        if alea.random() < 0.25:
+            restants = [mot for mot in theme["tags"] if mot not in mots_de_l_auteur]
+            for nom_de_tag in alea.sample(restants, min(2, len(restants))):
+                tag, _cree = Tag.objects.get_or_create(nom=nom_de_tag)
+                TagDeCapsule.objects.get_or_create(
+                    capsule=capsule, tag=tag, origine=TagDeCapsule.MACHINE
+                )
 
     def _embarquer_pour_de_vrai(self):
         """Remplace les vecteurs synthetiques par ceux de `mistral-embed`.

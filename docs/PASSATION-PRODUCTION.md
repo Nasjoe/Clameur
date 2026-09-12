@@ -244,22 +244,40 @@ le texte est coupé sur les bords, change la valeur dans les `Réglages`.
 L'affiche à imprimer, avec son QR, est sur `/affiche` — réservée au
 personnel, `Ctrl+P`, A4, marges « aucune », arrière-plans activés.
 
-**Le ciel est en sommeil depuis le 2026-09-01.** La page d'accueil est la
-liste des clameurs, avec sa recherche ; elle ne dépend d'aucun calcul, et une
-clameur y figure dès sa publication. Il n'y a donc plus rien à recalculer après
-une vague d'enrichissement.
+**Le ciel se recalcule tout seul.** Deux minutes après un dépôt ou un retrait,
+une tâche de fond reprend le relief, les régions et les positions manquantes.
+Une rafale de dépôts ne coûte qu'un seul calcul. Il n'y a donc rien à lancer
+après une vague d'enrichissement.
 
-La commande reste là pour le jour où le ciel reviendra, et elle fonctionne
-encore sur les vecteurs déjà en base :
+**Sauf au déploiement.** Rien ne se déclenche tant qu'aucune clameur n'est
+déposée : sur une installation neuve, ou après une restauration de sauvegarde,
+le ciel reste vide jusqu'à ce que tu forces un calcul. Cette cible fait partie
+de la manœuvre de mise en service, et **elle marche telle quelle sur le
+serveur** — elle lit `DEBUG` dans le `.env` et passe par le compose de prod :
 
 ```bash
-docker compose -f docker-compose-prod.yml exec web \
-  python manage.py projeter_la_constellation
+make constellation
 ```
 
-Mais **plus rien ne calcule de nouveaux vecteurs** : la tâche `embarquer` n'est
-plus enfilée derrière la transcription. Seules la transcription, le titre et
-les mots-clés partent en tâche de fond.
+Elle affiche le nombre de clameurs projetées, le nombre de régions nommées, et
+**la mesure qui compte** : la part des étoiles dont la plus proche voisine à
+l'écran est vraiment une de leurs plus proches par le sens. Sous 50 %, elle
+prévient — le ciel ne dit alors plus grand-chose.
+
+**Les clameurs publiées entre le 2026-09-01 et le 2026-09-12 n'ont pas de
+vecteur** : la tâche `embarquer` n'était pas enfilée pendant cette période.
+Elles figurent dans la liste, sans étoile. La commande les compte à chaque
+passage ; pour leur en calculer un :
+
+```bash
+make constellation ARGS=--rattraper
+```
+
+**Un appel payant à `mistral-embed` par clameur** — c'est pourquoi rien ne part
+sans ce drapeau. Les tâches sont enfilées dans Celery, donc rien ne bloque, et
+le ciel se recalcule tout seul quand les vecteurs sont arrivés. Une clameur
+sans transcription, elle, ne peut pas recevoir de vecteur : la commande la
+signale à part.
 
 **En fin d'événement**, purge les enregistrements jamais publiés :
 

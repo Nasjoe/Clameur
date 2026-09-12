@@ -1,140 +1,89 @@
-"""Projette les vecteurs des clameurs en deux dimensions.
-/ Projects clameur vectors onto two dimensions.
+"""Force un recalcul du ciel : positions, relief et regions.
+/ Forces a sky recomputation: positions, relief and regions.
 
-POURQUOI LES POSITIONS SONT STOCKEES, ET NON CALCULEES A L'AFFICHAGE.
-Une projection est GLOBALE : ajouter une clameur deplace toutes les autres. Si
-on la recalculait a chaque visite, la constellation serait differente a chaque
-fois — on ne pourrait plus revenir a une etoile reperee la veille, ni la
-montrer a quelqu'un. Les etoiles doivent etre fixes entre deux recalculs.
-/ A projection is global: recomputing it per visit would move every star.
+CETTE COMMANDE NE PORTE PLUS D'ALGORITHME. Le calcul vit dans `capsules.ciel`,
+et c'est la que sont expliques les choix qui le gouvernent — pourquoi les
+positions sont stockees, pourquoi t-SNE plutot que la PCA, pourquoi il part
+d'une PCA, et pourquoi la variance expliquee ne dit rien. La tache Celery
+`recalculer_le_ciel` et cette commande appellent exactement le meme code : deux
+copies auraient fini par diverger.
+/ No algorithm here: it lives in capsules.ciel, and so do its explanations.
 
-POURQUOI T-SNE, ET POURQUOI ECRIT ICI.
-La PCA a tenu tant que les vecteurs venaient des fixtures — huit gaussiennes
-bien separees, un cas facile. Sur de VRAIS vecteurs `mistral-embed`, elle place
-« dans le bon quartier » sans placer le bon voisin.
+A QUOI ELLE SERT ENCORE, PUISQUE LE CALCUL EST AUTOMATIQUE.
+Rien ne se declenche tant qu'aucune clameur n'est deposee ni retiree : au
+premier deploiement, ou apres une restauration de sauvegarde, le ciel serait
+vide sans elle. Elle sert aussi a voir la mesure de fidelite, que la tache ne
+fait qu'ecrire dans son journal.
+/ Nothing fires until a clameur is posted: on a fresh deployment, only this
+  command fills the sky.
 
-Mesure du 2026-08-31, sur soixante clameurs variees. Une seule question :
-pour chaque clameur, ou se situe sa voisine D'ECRAN dans son vrai classement
-semantique ?
-
-    PCA     rang median 8 sur 59, et le bon voisin affiche 1 fois sur 3
-    t-SNE   rang median 0,        et le bon voisin affiche 9 fois sur 10
-
-`_fidelite` mesure la meme chose plus grossierement, mais a chaque passage :
-la part des etoiles dont la voisine d'ecran fait partie de leurs plus proches
-par le sens. Sur le corpus de demonstration enrichi pour de vrai, elle passe
-d'environ 77 % avec la PCA a 99 % avec t-SNE.
-
-scikit-learn apporterait cela en une ligne, et une centaine de megaoctets dans
-l'image pour une commande lancee de loin en loin. Le calcul ci-dessous fait le
-meme travail avec le numpy deja installe.
-/ PCA held only while the vectors came from well-separated fixtures; on real
-  embeddings it puts a clameur in the right neighbourhood but next to the wrong
-  neighbour. Median rank of the on-screen neighbour: 8 of 59 under PCA, 0 under
-  t-SNE. Avoiding scikit-learn saves 100 MB for a command run once in a while.
-
-POURQUOI L'INITIALISATION PAR LA PCA.
-Un t-SNE parti d'un nuage aleatoire donne un ciel different a chaque passage :
-l'orientation change, et l'on ne retrouve plus une etoile reperee la veille.
-Parti de la PCA, il rend les MEMES POSITIONS pour les memes vecteurs, et il
-garde l'orientation d'ensemble d'une projection a l'autre — a condition de
-fixer le signe des axes, que `svd` choisit sinon au hasard (voir `_pca`). La
-promesse vaut a bibliotheques constantes : une autre version de BLAS peut
-rendre une decomposition legerement differente.
-/ The PCA start gives identical positions for identical vectors and keeps the
-  overall orientation, provided the axis signs are pinned down (see _pca).
-  It holds for a given BLAS build, not across every possible one.
-
-POURQUOI LA VARIANCE EXPLIQUEE N'EST PLUS AFFICHEE.
-Elle passait pour le signal d'alerte. Elle ment : mesuree a 18,5 % sur les
-fixtures — ou la separation est parfaite — et a 9,7 % sur de vraies clameurs.
-Elle MONTE quand le probleme devient facile pour de mauvaises raisons. La
-commande affiche desormais ce qui compte : la part des etoiles dont la plus
-proche voisine a l'ecran fait vraiment partie de ses plus proches par le sens.
-/ Explained variance was the alert signal, and it lies: 18.5 % on the easy
-  fixtures against 9.7 % on real clameurs. We now show neighbourhood quality.
-
-LA COMMANDE EST EN O(n²). Quelques centaines de clameurs passent en secondes ;
-au-dela de quelques milliers, il faudra une autre methode.
-/ O(n²): fine for hundreds, not for thousands.
+ELLE NE REDEPLACE PAS LES ETOILES SANS RAISON. Comme la tache, elle ne relance
+la projection que si une clameur publiee attend encore sa position ; sinon elle
+se contente du relief et des regions. Les etoiles ne bougent donc pas parce
+qu'on a lance la commande deux fois de suite.
+/ Like the task, it only projects when a star is missing.
 """
+
+import logging
 
 import numpy as np
 from django.core.management.base import BaseCommand
 
-from capsules.models import Capsule, StatutCapsule
+from capsules import ciel
+from capsules.models import Capsule, Ciel, StatutCapsule
+from capsules.tasks import recalculer_le_ciel
 
-MARGE = 0.04
-
-# Combien de voisines chaque clameur « connait ». Trop peu, le ciel se casse en
-# miettes ; trop, les groupes fondent les uns dans les autres.
-# / How many neighbours each clameur knows: too few shatters the sky, too many
-#   melts the groups together.
-VOISINES = 30
-ITERATIONS = 800
+logger = logging.getLogger(__name__)
 
 
 class Command(BaseCommand):
-    help = "Calcule la position de chaque clameur dans la constellation."
+    help = "Recalcule le ciel : positions des clameurs, relief et régions."
 
     def add_arguments(self, parseur):
         parseur.add_argument(
-            "--tout", action="store_true",
-            help="Projette aussi les capsules retirées (par défaut : publiées seules).",
+            "--rattraper", action="store_true",
+            help=(
+                "Enfile aussi le calcul des vecteurs manquants. "
+                "Un appel payant par clameur : sans ce drapeau, on se contente "
+                "de les compter."
+            ),
         )
 
     def handle(self, *args, **options):
-        capsules = Capsule.objects.exclude(embedding=None)
-        if not options["tout"]:
-            capsules = capsules.filter(statut=StatutCapsule.PUBLIEE)
-        capsules = list(capsules.only("uuid", "embedding"))
+        self._les_vecteurs_manquants(options["rattraper"])
+        resultat = recalculer_le_ciel()
 
-        if len(capsules) < 3:
+        projetees = list(
+            Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+            .exclude(position_x=None)
+            .exclude(embedding=None)
+            .only("uuid", "embedding", "position_x", "position_y")
+        )
+
+        if resultat == "trop peu" or len(projetees) < 3:
             self.stdout.write(self.style.WARNING(
-                f"{len(capsules)} clameur(s) avec vecteur : trop peu pour projeter. "
+                f"{len(projetees)} clameur(s) exploitable(s) : trop peu pour projeter. "
                 "Lance d'abord l'enrichissement, ou `creer_des_clameurs`."
             ))
             return
 
-        vecteurs = np.vstack([np.asarray(c.embedding, dtype=float) for c in capsules])
-
-        # UNE SEULE CAPSULE ABIMEE EMPORTAIT LE SITE. La projection normalise
-        # les vecteurs : a norme nulle, la division rend NaN, et le NaN se
-        # propage a TOUTES les positions. Elles s'ecrivent sans broncher dans
-        # un FloatField, `exclude(position_x=None)` ne les filtre pas, et la
-        # page d'accueil finit en 500 sur le calcul de la teinte. Une capsule
-        # sans vecteur exploitable n'a pas d'etoile, voila tout — comme une
-        # capsule sans vecteur du tout.
-        # / One damaged capsule turned every position into NaN and took the
-        #   home page down. No usable vector, no star: nothing more.
-        exploitables = np.isfinite(vecteurs).all(axis=1) & (
-            np.linalg.norm(vecteurs, axis=1) > 0
-        )
-        if not exploitables.all():
-            self.stdout.write(self.style.WARNING(
-                f"  {(~exploitables).sum()} clameur(s) au vecteur inexploitable, "
-                "laissées de côté."
-            ))
-            capsules = [c for c, garde in zip(capsules, exploitables) if garde]
-            vecteurs = vecteurs[exploitables]
-            if len(capsules) < 3:
-                self.stdout.write(self.style.WARNING(
-                    f"{len(capsules)} clameur(s) exploitable(s) : trop peu pour projeter."
-                ))
-                return
-
-        positions = self._projeter(vecteurs)
-
-        for capsule, (x, y) in zip(capsules, positions):
-            capsule.position_x = float(x)
-            capsule.position_y = float(y)
-        Capsule.objects.bulk_update(capsules, ["position_x", "position_y"], batch_size=200)
-
-        fidelite = self._fidelite(vecteurs, positions)
+        objet = Ciel.get_solo()
         self.stdout.write(self.style.SUCCESS(
-            f"{len(capsules)} clameurs projetées."
+            f"{len(projetees)} clameurs projetées, "
+            f"{len(objet.regions)} région(s) nommée(s)."
         ))
-        proches = self._combien_de_proches(len(capsules))
+
+        # LA FIDELITE EST RECALCULEE ICI, ET NON LUE QUELQUE PART : c'est la
+        # seule mesure qui dise si le ciel tient sa promesse — deux etoiles
+        # cote a cote parlent-elles vraiment de la meme chose ? La tache, elle,
+        # n'a personne a qui l'afficher.
+        # / Recomputed here: it is the only measurement that speaks to the
+        #   sky's own promise, and the task has nobody to show it to.
+        vecteurs = np.vstack([np.asarray(c.embedding, dtype=float) for c in projetees])
+        positions = np.array([[c.position_x, c.position_y] for c in projetees])
+        fidelite = ciel.fidelite(vecteurs, positions)
+
+        proches = ciel.combien_de_proches(len(projetees))
         self.stdout.write(
             f"  {fidelite:.0%} des étoiles ont pour plus proche voisine "
             f"l'une de leurs {proches} clameurs les plus proches par le sens."
@@ -149,135 +98,63 @@ class Command(BaseCommand):
                 "deux dimensions."
             ))
 
-    def _projeter(self, vecteurs):
-        """t-SNE initialise par une PCA, puis mise a l'echelle dans [0, 1].
-        / PCA-seeded t-SNE, then rescaled into [0, 1]."""
-        depart = self._pca(vecteurs)
-        plan = self._tsne(vecteurs, depart)
+    def _les_vecteurs_manquants(self, rattraper: bool) -> None:
+        """Compte les clameurs sans vecteur, et les enfile si on le demande.
 
-        # Mise a l'echelle par axe : sans elle, un nuage tres allonge sur un
-        # axe se tasserait en une ligne a l'ecran.
-        # / Per-axis rescaling: otherwise an elongated cloud collapses to a line.
-        minimum, maximum = plan.min(axis=0), plan.max(axis=0)
-        etendue = np.where(maximum - minimum == 0, 1.0, maximum - minimum)
-        return MARGE + (plan - minimum) / etendue * (1 - 2 * MARGE)
+        UNE CLAMEUR SANS VECTEUR EST DANS LA LISTE ET ABSENTE DU CIEL. C'est le
+        cas de toutes celles publiees pendant que la tache `embarquer` n'etait
+        pas enfilee : elles ne recevront d'etoile que si on les rattrape.
 
-    def _pca(self, vecteurs):
-        """Les deux axes de plus grande variance. / The two widest axes."""
-        centres = vecteurs - vecteurs.mean(axis=0)
-        _u, _valeurs, directions = np.linalg.svd(centres, full_matrices=False)
-
-        # LE SIGNE DES AXES EST ARBITRAIRE, ET IL FAUT LE FIXER SOI-MEME.
-        # `svd` peut rendre un axe ou son oppose, indifferemment. Une clameur
-        # de plus, et une fois sur deux les memes axes revenaient a l'envers :
-        # le ciel entier passait en miroir, et comme la teinte d'une etoile
-        # derive de son angle depuis le centre, toutes changeaient aussi de
-        # couleur. On impose donc une convention — la composante de plus grand
-        # module est positive — et l'orientation tient d'une projection a
-        # l'autre. / SVD signs are arbitrary; without a convention the whole
-        # sky mirrors itself, colours included, when one clameur is added.
-        axes = directions[:2]
-        dominantes = np.abs(axes).argmax(axis=1)
-        signes = np.sign(axes[np.arange(2), dominantes])
-        axes = axes * np.where(signes == 0, 1.0, signes)[:, None]
-        return centres @ axes.T
-
-    def _tsne(self, vecteurs, depart):
-        """t-SNE, en numpy. Rapproche a l'ecran ce qui est proche par le sens.
-
-        Le principe tient en une phrase : on donne a chaque clameur une
-        distribution de voisinage en 1024 dimensions, une autre a l'ecran, et
-        l'on deplace les points jusqu'a ce que les deux se ressemblent.
-        / Match the neighbourhood distributions of both spaces.
+        SANS TRANSCRIPTION, PAS DE VECTEUR POSSIBLE : `embarquer` rendrait
+        « rien a embarquer ». On les compte a part, pour que l'operateur sache
+        pourquoi celles-la resteront sans etoile.
+        / A clameur with no vector sits in the list but not in the sky; one with
+          no transcription cannot be helped at all.
         """
-        nombre = len(vecteurs)
-        unitaires = vecteurs / np.linalg.norm(vecteurs, axis=1, keepdims=True)
+        sans_vecteur = Capsule.objects.filter(
+            statut=StatutCapsule.PUBLIEE, embedding=None
+        )
+        muettes = sans_vecteur.filter(transcription_texte="").count()
+        a_calculer = list(
+            sans_vecteur.exclude(transcription_texte="").values_list("uuid", flat=True)
+        )
 
-        # DISTANCES PAR PRODUIT SCALAIRE, ET NON PAR SOUSTRACTION TERME A TERME.
-        # Ecrire `((u[:, None, :] - u[None, :, :]) ** 2).sum(-1)` demande un
-        # tableau de n x n x 1024 flottants : trois gigaoctets pour six cents
-        # clameurs, trente-trois pour deux mille. Le conteneur se fait tuer par
-        # l'OOM killer, et le journal ne dit qu'un mot : « Killed ». Entre
-        # vecteurs unitaires, ||a - b||² vaut 2 - 2·a·b : une multiplication de
-        # matrices, et n x n en memoire.
-        # / The naive form needs an n x n x 1024 array — 3 GB at six hundred
-        #   capsules — and the container dies with nothing but "Killed" in the
-        #   log. For unit vectors, ||a-b||² is 2 - 2·a·b.
-        carres = np.maximum(2 - 2 * (unitaires @ unitaires.T), 0)
-
-        voisines = max(2.0, min(float(VOISINES), (nombre - 1) / 3))
-        affinites = np.zeros_like(carres)
-        for indice in range(nombre):
-            # Chaque clameur a son propre rayon de voisinage, trouve par
-            # dichotomie : dans un amas dense il est petit, dans un coin vide
-            # il est large. C'est ce qui permet aux clameurs isolees d'exister
-            # quand meme. / Each point gets its own radius, so lonely clameurs
-            # still find a place.
-            bas, haut, cible = 1e-10, 1e10, np.log(voisines)
-            for _ in range(60):
-                largeur = (bas + haut) / 2
-                proximites = np.exp(-carres[indice] * largeur)
-                proximites[indice] = 0
-                somme = proximites.sum() or 1e-12
-                entropie = np.log(somme) + largeur * (carres[indice] * proximites).sum() / somme
-                if entropie > cible:
-                    bas = largeur
-                else:
-                    haut = largeur
-            affinites[indice] = proximites / somme
-
-        affinites = np.maximum((affinites + affinites.T) / (2 * nombre), 1e-12)
-
-        # L'EXAGERATION PRECOCE : on gonfle les affinites au debut pour que les
-        # groupes se detachent avant de se ranger. Sans elle, tout se tasse au
-        # centre et rien ne se separe. / Early exaggeration: groups must pull
-        # apart before they settle.
-        affinites *= 4
-
-        positions = depart / (depart.std(axis=0).mean() or 1.0) * 1e-2
-        vitesse = np.zeros_like(positions)
-        for iteration in range(ITERATIONS):
-            if iteration == 100:
-                affinites /= 4
-            ecarts = positions[:, None, :] - positions[None, :, :]
-            inverses = 1 / (1 + (ecarts**2).sum(-1))
-            np.fill_diagonal(inverses, 0)
-            projetees = np.maximum(inverses / inverses.sum(), 1e-12)
-            gradient = 4 * (
-                (((affinites - projetees) * inverses)[:, :, None] * ecarts).sum(1)
+        if muettes:
+            self.stdout.write(
+                f"  {muettes} clameur(s) sans transcription : aucun vecteur "
+                "possible, donc aucune étoile."
             )
-            vitesse = (0.5 if iteration < 250 else 0.8) * vitesse - 200 * gradient
-            positions = positions + vitesse
-            positions -= positions.mean(axis=0)
-        return positions
+        if not a_calculer:
+            return
 
-    def _fidelite(self, vecteurs, positions) -> float:
-        """La part des clameurs dont la voisine d'ecran est vraiment une proche.
+        phrase = (
+            "1 clameur attend son vecteur"
+            if len(a_calculer) == 1
+            else f"{len(a_calculer)} clameurs attendent leur vecteur"
+        )
+        if not rattraper:
+            self.stdout.write(self.style.WARNING(
+                f"  {phrase}. Relance avec --rattraper pour l'enfiler "
+                "(un appel payant par clameur)."
+            ))
+            return
 
-        C'EST LA SEULE MESURE QUI DISE QUELQUE CHOSE au sujet du ciel : il
-        promet que deux etoiles cote a cote parlent de la meme chose, et c'est
-        exactement ce qu'on verifie ici.
-        / The only measurement that speaks to the sky's own promise.
-        """
-        unitaires = vecteurs / np.linalg.norm(vecteurs, axis=1, keepdims=True)
-        cosinus = unitaires @ unitaires.T
-        np.fill_diagonal(cosinus, -np.inf)
-        proches = np.argsort(-cosinus, axis=1)[:, : self._combien_de_proches(len(vecteurs))]
+        from capsules.tasks import embarquer
 
-        ecrans = ((positions[:, None, :] - positions[None, :, :]) ** 2).sum(-1)
-        np.fill_diagonal(ecrans, np.inf)
-        voisine = ecrans.argmin(axis=1)
-        return float(np.mean([voisine[i] in proches[i] for i in range(len(vecteurs))]))
+        enfiles = 0
+        for uuid in a_calculer:
+            # ON VA AU BOUT DE LA LISTE. Un courtier qui tombe a la troisieme
+            # clameur ne doit pas laisser les cinquante suivantes sans vecteur,
+            # et l'operateur doit pouvoir relancer sans rien casser : enfiler
+            # deux fois le meme calcul ne fait que le refaire.
+            # / A broker failing on the third must not abandon the next fifty.
+            try:
+                embarquer.delay(str(uuid))
+                enfiles += 1
+            except Exception:
+                logger.exception("enqueue du vecteur de %s impossible", uuid)
 
-    def _combien_de_proches(self, nombre: int) -> int:
-        """Combien de voisines par le sens comptent comme un succes.
-
-        JAMAIS PLUS DE LA MOITIE DU CORPUS. A cinq clameurs, « l'une des cinq
-        plus proches » les designe toutes : la mesure rendait 100 % sur un ciel
-        jete au hasard, et son avertissement ne pouvait jamais partir. C'est
-        pourtant en debut d'evenement, sur un corpus minuscule, que l'operateur
-        a le plus besoin de savoir si le ciel dit quelque chose.
-        / Never more than half the corpus: at five clameurs, "one of the five
-          nearest" means "any of them", and the measure flattered a random sky.
-        """
-        return max(1, min(5, (nombre - 1) // 2))
+        self.stdout.write(self.style.SUCCESS(
+            f"  {enfiles} vecteur(s) en file. Le ciel se recalculera tout seul "
+            "quand ils seront arrivés."
+        ))

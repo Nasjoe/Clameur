@@ -78,6 +78,70 @@ def test_une_clameur_retiree_ou_en_brouillon_n_est_pas_dans_la_liste(client, cor
     assert str(brouillon.uuid) not in page
 
 
+# ----------------------------------------------------------------- le ciel
+
+@pytest.mark.django_db
+def test_la_page_porte_le_relief_les_regions_et_les_etoiles(client, corpus_pret):
+    """Les trois jeux de données du ciel voyagent par `json_script`.
+    / The sky's three datasets travel through json_script."""
+    page = client.get("/").content.decode()
+
+    assert 'id="donnees-grille"' in page
+    assert 'id="donnees-regions"' in page
+    assert 'id="donnees-etoiles"' in page
+
+
+def _etoiles_de(reponse):
+    import json
+    import re
+
+    brut = re.search(
+        r'id="donnees-etoiles"[^>]*>(.*?)</script>', reponse.content.decode(), re.DOTALL
+    )
+    return json.loads(brut.group(1)) if brut else []
+
+
+@pytest.mark.django_db
+def test_les_etoiles_ne_dependent_pas_de_la_recherche(client, corpus_pret):
+    """LE CIEL MONTRE LE CORPUS, PAS LE RÉSULTAT. Sans cela, `/?q=…` partagé
+    rendrait une carte amputée de tout ce que la recherche écarte — et le
+    relief décrirait un paysage qui n'existe pas.
+    / The sky shows the corpus: a shared search link must not amputate it.
+    """
+    entier = _etoiles_de(client.get("/"))
+    filtre = _etoiles_de(client.get("/?q=zzzznexistepas"))
+
+    assert entier, "aucune étoile sur la page"
+    assert len(filtre) == len(entier)
+
+
+@pytest.mark.django_db
+def test_une_clameur_sans_vecteur_figure_dans_la_liste_sans_etoile(client, corpus):
+    """Elle est là tout de suite, avec une pastille creuse, et recevra son
+    étoile au prochain calcul. / Present at once, with a hollow dot."""
+    page = client.get("/").content.decode()
+
+    assert "sans-etoile" in page
+    assert _etoiles_de(client.get("/")) == []
+
+
+@pytest.mark.django_db
+def test_la_teinte_suit_la_duree_et_reste_dans_l_arc_chaud():
+    """La couleur disait la position, qu'on voit déjà : elle n'apprenait rien.
+    Elle dit maintenant la durée — et ne quitte jamais l'arc chaud, sous peine
+    de poser du vert sur un papier brun.
+    / Hue said the position, which the eye already reads; now it says duration.
+    """
+    from capsules.views import _teinte_de_la_duree
+
+    breve, longue = _teinte_de_la_duree(5), _teinte_de_la_duree(170)
+
+    assert breve != longue
+    for teinte in (breve, longue):
+        assert 0 <= teinte < 360
+        assert teinte >= 350 or teinte <= 100, f"{teinte}° quitte l'arc chaud"
+
+
 # ------------------------------------------------------------- la recherche
 
 @pytest.mark.django_db
@@ -147,7 +211,11 @@ def test_la_page_rend_les_fiches_cote_serveur(client, corpus):
     assert reponse.status_code == 200
     contenu = reponse.content.decode()
 
-    assert contenu.count('class="clameur"') == len(corpus)
+    # On compte la balise, et non `class="clameur"` a l'exact : une clameur
+    # sans etoile porte `class="clameur sans-etoile"`, et le compte tombait a
+    # zero sur un corpus tout neuf — celui qu'on a en debut d'evenement.
+    # / Count the tag: a starless clameur carries a second class.
+    assert contenu.count('<article class="clameur') == len(corpus)
     assert "lecteur-de-fiche" in contenu, "pas de lecteur audio dans les fiches"
     assert 'ws-connect="/ws/constellation"' in contenu, "pas de connexion temps réel"
     for capsule in corpus.values():

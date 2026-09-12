@@ -4,8 +4,8 @@
 import pytest
 from django.core.management import call_command
 
-from capsules.models import Capsule, StatutCapsule
-from capsules.views import _teinte_de_la_position
+from capsules import ciel
+from capsules.models import Capsule, Ciel, StatutCapsule
 
 
 @pytest.fixture
@@ -32,36 +32,15 @@ def test_les_positions_ne_bougent_pas_sans_nouvelle_clameur(corpus_projete):
     assert avant == apres
 
 
-def _ecart_circulaire(a: int, b: int) -> int:
-    """L'écart entre deux teintes sur la roue chromatique.
-
-    Une soustraction ordinaire est fausse ici : 350 et 45 sont voisins à l'œil,
-    mais leur différence vaut 305. L'ancien test concluait au contraste sur
-    cette base, et validait donc une propriété qui n'existait pas.
-    / A plain subtraction is wrong: 350 and 45 look adjacent but differ by 305.
+def test_la_commande_ecrit_aussi_le_relief(corpus_projete):
+    """Sans cela, `make constellation` laisserait un relief périmé posé sur des
+    positions neuves : les noms de région tomberaient à côté de leurs massifs.
+    / Otherwise the command leaves a stale relief over fresh positions.
     """
-    ecart = abs(a - b) % 360
-    return min(ecart, 360 - ecart)
+    objet = Ciel.get_solo()
 
-
-def test_deux_positions_voisines_donnent_des_teintes_voisines():
-    """La couleur prolonge la carte : sans cela, un même amas virerait au
-    bariolé alors que la page promet que les voisines se ressemblent."""
-    assert _ecart_circulaire(
-        _teinte_de_la_position(0.80, 0.50), _teinte_de_la_position(0.82, 0.52)
-    ) < 15
-
-
-def test_deux_amas_opposes_se_distinguent_sans_quitter_la_famille_chaude():
-    """L'arc chaud ne fait que 110° : deux points diamétralement opposés sont
-    donc distants d'au plus 55°, jamais complémentaires. C'est le prix assumé
-    d'un ciel qui ne pose ni vert ni bleu sur un papier brun — mais la
-    distinction doit rester visible.
-    / The warm arc spans 110°, so opposite points differ by at most 55°."""
-    ecart = _ecart_circulaire(
-        _teinte_de_la_position(0.80, 0.50), _teinte_de_la_position(0.20, 0.50)
-    )
-    assert 35 < ecart <= 55, f"écart de {ecart}° : les amas ne se distinguent plus"
+    assert objet.grille, "la commande n'a pas écrit la grille de densité"
+    assert objet.calcule_le is not None
 
 
 def test_la_projection_refuse_de_travailler_sur_trop_peu(db, reglages):
@@ -164,9 +143,6 @@ def test_une_clameur_de_plus_ne_retourne_pas_le_ciel(reglages):
     """
     import numpy as np
 
-    from capsules.management.commands.projeter_la_constellation import Command
-
-    commande = Command()
     alea = np.random.default_rng(0)
 
     retournements = 0
@@ -176,8 +152,8 @@ def test_une_clameur_de_plus_ne_retourne_pas_le_ciel(reglages):
         une_de_plus = np.vstack([vecteurs, alea.normal(0, 1, (1, 1024))])
         une_de_plus[-1] /= np.linalg.norm(une_de_plus[-1])
 
-        avant = commande._pca(vecteurs)
-        apres = commande._pca(une_de_plus)[:-1]
+        avant = ciel.pca(vecteurs)
+        apres = ciel.pca(une_de_plus)[:-1]
         for axe in range(2):
             if np.corrcoef(avant[:, axe], apres[:, axe])[0, 1] < 0:
                 retournements += 1
@@ -194,8 +170,8 @@ def test_un_vecteur_de_norme_nulle_ne_fait_pas_tomber_la_page_d_accueil(client, 
 
     La normalisation divise par la norme : à zéro, la ligne devient NaN, puis
     l'ensemble du calcul. Les NaN s'écrivent sans broncher dans un `FloatField`,
-    `exclude(position_x=None)` ne les filtre pas, et la page d'accueil finit en
-    500 sur `_teinte_de_la_position`. Une capsule abîmée emportait le site.
+    `exclude(position_x=None)` ne les filtre pas, et la page d'accueil tombait
+    en 500 au calcul de la couleur. Une capsule abîmée emportait le site.
     / One zero vector turned every position into NaN and took the home page down.
     """
     import numpy as np
@@ -232,15 +208,12 @@ def test_la_fidelite_ne_flatte_pas_un_corpus_minuscule():
     """
     import numpy as np
 
-    from capsules.management.commands.projeter_la_constellation import Command
-
-    commande = Command()
     alea = np.random.default_rng(2)
     vecteurs = alea.normal(0, 1, (6, 1024))
     vecteurs /= np.linalg.norm(vecteurs, axis=1, keepdims=True)
 
     au_hasard = [
-        commande._fidelite(vecteurs, alea.random((6, 2))) for _ in range(20)
+        ciel.fidelite(vecteurs, alea.random((6, 2))) for _ in range(20)
     ]
     assert np.mean(au_hasard) < 0.8, (
         f"un ciel jeté au hasard obtient {np.mean(au_hasard):.0%} de fidélité : "

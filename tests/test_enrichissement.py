@@ -98,13 +98,14 @@ def test_un_echec_de_transcription_laisse_la_capsule_publiee(capsule_a_transcrir
 
 
 @pytest.mark.django_db
-def test_l_embedding_ne_part_plus_derriere_la_transcription(capsule_a_transcrire):
-    """L'embedding est EN SOMMEIL depuis le 2026-09-01, avec la constellation.
+def test_les_deux_suites_partent_derriere_la_transcription(capsule_a_transcrire):
+    """Le titre et les mots-clés d'un côté, le vecteur de l'autre, en parallèle.
 
-    La tâche existe toujours et se rejoue depuis la console, mais plus rien ne
-    l'enfile : publier une clameur ne déclenche aucun calcul de proximité.
-    / Dormant since the constellation was shelved: the task remains, nothing
-      queues it."""
+    LE VECTEUR EST CE QUI DONNE UNE ÉTOILE À LA CLAMEUR. Sans lui, elle figure
+    dans la liste et reste absente du ciel — c'est précisément ce qui avait
+    fait mettre la constellation en sommeil.
+    / The vector is what gives a clameur its star.
+    """
     lances = []
     with patch("capsules.tasks.transcrire_le_fichier", return_value=TRANSCRIPTION), \
          patch("capsules.tasks.diffuser_la_transcription"), \
@@ -112,8 +113,8 @@ def test_l_embedding_ne_part_plus_derriere_la_transcription(capsule_a_transcrire
          patch.object(embarquer, "delay", lambda u: lances.append("embarquer")):
         transcrire(str(capsule_a_transcrire.uuid))
 
-    assert lances == ["taguer"], (
-        "seule l'extraction du titre et des mots-clés suit la transcription"
+    assert sorted(lances) == ["embarquer", "taguer"], (
+        "la transcription doit relancer l'extraction des mots-clés ET le vecteur"
     )
 
 

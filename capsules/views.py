@@ -1,7 +1,6 @@
 """Vues de l'enregistrement et de la lecture. / Recording and playback views."""
 
 import logging
-import math
 
 import segno
 from django.conf import settings
@@ -13,12 +12,13 @@ from django.db.models import F, Q
 from django.http import Http404, HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from bornes.models import Reglages
 from capsules.garde_fous import adresse_ip, limite_atteinte
-from capsules.models import Capsule, StatutCapsule, Tag, TagDeCapsule
+from capsules.models import Capsule, Ciel, StatutCapsule, Tag, TagDeCapsule
 from capsules.photos import purger_les_exif
 from capsules.publication import a_une_piste_audio, publier
 
@@ -33,11 +33,6 @@ NOMBRE_MAX_DE_TAGS = 2
 CLE_DES_CLAMEURS = "mes_clameurs"
 CLE_DU_PSEUDO = "pseudo"
 CLAMEURS_RETENUES = 50
-
-# Au-dela, le ciel devient illisible et la page trop lourde. La
-# constellation n'est pas un moteur de recherche : c'est une vue d'ensemble.
-# / Beyond this the sky is unreadable; it is an overview, not a search engine.
-PLAFOND_CONSTELLATION = 600
 
 # Au-dela, la page devient trop lourde a charger d'un coup. La recherche est
 # la pour retrouver ce qui n'est plus a l'ecran.
@@ -427,6 +422,15 @@ def retirer_capsule(request, uuid):
         capsule.save(update_fields=["statut"])
         logger.info("clameur %s retiree", capsule.uuid)
 
+        # Son etoile doit disparaitre du ciel. L'import est local : `tasks`
+        # tire numpy et les clients de Mistral, qui n'ont rien a faire dans le
+        # chemin d'import des vues. La fonction, elle, avale ses propres
+        # erreurs — un Redis mort n'empeche jamais un retrait.
+        # / Local import; the function swallows its own failures.
+        from capsules.tasks import programmer_le_recalcul
+
+        programmer_le_recalcul()
+
     return redirect("capsules:lire_capsule", uuid=capsule.uuid)
 
 
@@ -601,43 +605,58 @@ def liste(request):
             "recherche": recherche,
             "invitation": invitation_a_enregistrer(request),
             "pour_htmx": pour_htmx,
+            **({} if pour_htmx else _le_ciel()),
         },
     )
 
 
-# EN SOMMEIL DEPUIS LE 2026-09-01, avec la constellation. La vue n'est plus
-# routee : `/` rend la liste. On la garde entiere, elle et son gabarit, son
-# JavaScript et la commande `projeter_la_constellation`, pour le jour ou le
-# ciel reviendra. Rien ne l'appelle.
-# / Dormant since the constellation was shelved: no longer routed, kept whole.
-@require_GET
-def constellation(request):
-    """Les deux ecrans : la liste et le ciel, synchronises.
+def _le_ciel() -> dict:
+    """Le relief, les regions et les etoiles, pour la page entiere.
 
-    LA LISTE EST RENDUE PAR DJANGO, et non construite en JavaScript. C'est ce
-    qui permet a HTMX de remplacer une transcription par swap OOB quand elle
-    arrive : on ne peut pas viser un element que le serveur n'a jamais rendu.
-    / Django renders the list so HTMX can OOB-swap into it later.
-
-    TOUT EST CHARGE D'UN COUP, sans pagination : la synchronisation suppose que
-    n'importe quelle pastille trouve son element dans la liste.
-    / No pagination: any star must find its card.
+    RIEN DE TOUT CELA NE PART AVEC UN FRAGMENT HTMX : le fragment ne remplace
+    que la liste, et renvoyer la grille a chaque frappe couterait quarante
+    kilo-octets par lettre tapee.
+    / None of this travels with an HTMX fragment: it would cost 40 kB a keystroke.
     """
-    capsules = (
-        Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
-        .exclude(position_x=None)
-        .prefetch_related("tags_de_capsule__tag")
-        .order_by("-publiee_le")[:PLAFOND_CONSTELLATION]
-    )
-    return render(
-        request,
-        "capsules/constellation.html",
-        {
-            "clameurs": [decrire_une_clameur(capsule) for capsule in capsules],
-            "nombre": len(capsules),
-            "invitation": invitation_a_enregistrer(request),
-        },
-    )
+    ciel = Ciel.get_solo()
+    return {
+        "grille": ciel.grille,
+        "regions": ciel.regions,
+        # TOUTES LES ETOILES, SANS EGARD POUR LA RECHERCHE. Le relief decrit le
+        # corpus ; filtrer le ciel rendrait une carte amputee a qui partage un
+        # lien de recherche, et un paysage qui n'existe pas.
+        # / Every star, whatever the search: the sky shows the corpus.
+        "etoiles": [
+            {
+                "uuid": str(capsule.uuid),
+                "x": round(capsule.position_x, 4),
+                "y": round(capsule.position_y, 4),
+                "ecoutes": capsule.nombre_ecoutes,
+                "duree": capsule.duree_secondes,
+                "voix": _nombre_de_voix(capsule),
+                # L'HEURE SEULE, ET EN HEURE LOCALE. Elle sert a colorer « jour »
+                # ou « nuit » : lue en UTC, une clameur deposee a vingt-et-une
+                # heures en ete passerait pour une clameur de plein jour. La
+                # fraicheur, elle, se lit dans l'ORDRE de cette liste.
+                # / Local hour: in UTC an evening clameur reads as daylight.
+                "heure": (
+                    timezone.localtime(capsule.publiee_le).hour
+                    if capsule.publiee_le else 12
+                ),
+                "titre": capsule.titre or capsule.pseudo or _("Anonyme"),
+            }
+            for capsule in Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+            .exclude(position_x=None)
+            .order_by("-publiee_le")[:PLAFOND_DE_LA_LISTE]
+        ],
+    }
+
+
+def _nombre_de_voix(capsule) -> int:
+    """Combien de personnes parlent dans la clameur, d'apres la diarisation.
+    / How many people speak, according to the diarisation."""
+    segments = (capsule.transcription_raw or {}).get("segments") or []
+    return len({segment.get("speaker") for segment in segments if segment.get("speaker")}) or 1
 
 
 def invitation_a_enregistrer(request) -> dict | None:
@@ -687,9 +706,12 @@ def decrire_une_clameur(capsule) -> dict:
         "duree": _duree_lisible(capsule.duree_secondes),
         "audio": capsule.audio_a_servir.url if capsule.audio_a_servir else "",
         "type_mime": capsule.type_mime_a_servir,
-        "x": round(capsule.position_x or 0.5, 4),
-        "y": round(capsule.position_y or 0.5, 4),
-        "teinte": _teinte_de_la_capsule(capsule),
+        # LES COORDONNEES NE SONT PLUS SUR LA FICHE. Elles voyagent dans
+        # `donnees-etoiles`, parce que HTMX remplace la liste a chaque frappe :
+        # un ciel construit sur les fiches se viderait des la premiere lettre.
+        # / Coordinates live in json_script: HTMX swaps the cards away.
+        "a_une_etoile": capsule.position_x is not None,
+        "teinte": _teinte_de_la_duree(capsule.duree_secondes),
         "segments": preparer_les_paroles(
             (capsule.transcription_raw or {}).get("segments") or []
         ),
@@ -744,30 +766,23 @@ def _qr_avec_viewbox(url: str) -> str:
     )
 
 
-def _teinte_de_la_capsule(capsule) -> int:
-    """La teinte d'une fiche, tiree de son UUID.
+# Trois minutes : au-dela, l'ecart de duree ne se voit plus a l'ecran.
+# / Beyond three minutes the difference stops showing.
+DUREE_LA_PLUS_LONGUE = 180
 
-    Elle derivait de la position dans le ciel : sans ciel, toutes les fiches
-    prenaient la meme couleur. L'UUID ne change jamais, donc une clameur garde
-    sa teinte d'une visite a l'autre, et le corpus reste bariole dans l'arc
-    chaud du projet.
-    / It came from the position in the sky; the UUID keeps each card's hue
-      stable across visits and the corpus varied.
+
+def _teinte_de_la_duree(secondes: int) -> int:
+    """La teinte d'une clameur, tiree de sa duree.
+
+    ELLE DERIVAIT DE LA POSITION DANS LE CIEL, donc de l'angle depuis le
+    centre : la couleur repetait ce que l'oeil lisait deja sur la carte, et
+    n'apprenait rien. La duree, elle, ne se voit nulle part ailleurs.
+    Le navigateur peut recolorer selon d'autres criteres ; cette valeur est ce
+    que le serveur rend avant que le JavaScript arrive.
+    / Hue used to repeat the position, which the eye already reads.
     """
-    if capsule.position_x is not None and capsule.position_y is not None:
-        return _teinte_de_la_position(capsule.position_x, capsule.position_y)
-    return int(TEINTE_DEPART + capsule.uuid.int % ETENDUE_DES_TEINTES) % 360
-
-
-def _teinte_de_la_position(x: float, y: float) -> int:
-    """La teinte suit l'angle depuis le centre du ciel, dans l'arc chaud.
-
-    Les amas proches recoivent des teintes proches, et deux amas opposes
-    s'opposent aussi en couleur — mais tous restent dans la meme famille.
-    / Nearby clusters get nearby hues, all inside the warm family.
-    """
-    angle = (math.degrees(math.atan2(y - 0.5, x - 0.5)) + 180) % 360
-    return int(TEINTE_DEPART + angle / 360 * ETENDUE_DES_TEINTES) % 360
+    part = min(1.0, (secondes or 0) / DUREE_LA_PLUS_LONGUE)
+    return int(TEINTE_DEPART + part * ETENDUE_DES_TEINTES) % 360
 
 
 # LES DEPIAUTEURS DE LIENS NE SONT PAS DES MOTEURS. Ils chargent une page une

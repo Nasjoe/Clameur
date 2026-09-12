@@ -30,18 +30,26 @@ def test_une_fiche_sans_transcription_s_affiche_quand_meme(client, corpus_pret):
 
 @pytest.mark.django_db
 def test_les_positions_sortent_avec_un_point_decimal(client, corpus_pret):
-    """En français, Django rend un flottant avec une VIRGULE : data-x="0,54".
-    Number() renvoie alors NaN et toutes les étoiles disparaissent, sans la
-    moindre erreur en console. `{% localize off %}` est ce qui l'évite."""
+    """En français, Django rend un flottant avec une VIRGULE : `0,54`.
+    `Number()` renvoie alors NaN et toutes les étoiles disparaissent, sans la
+    moindre erreur en console.
+
+    Les coordonnées ne voyagent plus dans des attributs `data-x` mais dans un
+    `json_script`, et c'est précisément pour cela : il sérialise en JSON, qui
+    ne connaît que le point décimal, là où un attribut suit la locale.
+    / They travel in a json_script now, which never localises.
+    """
+    import json
     import re
 
     contenu = client.get("/").content.decode()
-    valeurs = re.findall(r'data-x="([^"]+)"', contenu)
+    brut = re.search(r'id="donnees-etoiles"[^>]*>(.*?)</script>', contenu, re.DOTALL)
 
-    assert valeurs, "aucune position rendue"
-    fautives = [valeur for valeur in valeurs if "," in valeur]
-    assert not fautives, f"positions localisées : {fautives[:5]} sur {len(valeurs)}"
-    assert all(float(valeur) == float(valeur) for valeur in valeurs)
+    assert brut, "la page ne porte pas les étoiles"
+    etoiles = json.loads(brut.group(1))
+    assert etoiles, "aucune position rendue"
+    for etoile in etoiles:
+        assert isinstance(etoile["x"], float) and isinstance(etoile["y"], float)
 
 
 @pytest.mark.django_db

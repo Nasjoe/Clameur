@@ -6,6 +6,7 @@ from uuid import uuid4
 from django.db import models
 from django.utils.translation import gettext_lazy as _
 from pgvector.django import VectorField
+from solo.models import SingletonModel
 
 
 class StatutCapsule(models.TextChoices):
@@ -198,3 +199,26 @@ class TagDeCapsule(models.Model):
 
     def __str__(self):
         return f"{self.tag.nom} ({self.origine})"
+
+
+class Ciel(SingletonModel):
+    """Le relief du corpus, calcule d'un bloc et servi tel quel.
+
+    UNE SEULE LIGNE, comme les reglages : le ciel est global par nature. Une
+    projection se recalcule pour tout le monde ou pour personne, et deux lignes
+    concurrentes decriraient deux corpus differents.
+    / One row: a projection is global by nature.
+    """
+
+    # `grille[y][x]` : la premiere dimension est la ligne. Transposee, la carte
+    # rendrait un relief en miroir de ses etoiles, sans lever d'erreur.
+    # / Rows first; transposed, the relief silently mirrors its stars.
+    grille = models.JSONField(default=list, blank=True, verbose_name=_("grille de densité"))
+    regions = models.JSONField(default=list, blank=True, verbose_name=_("régions"))
+    calcule_le = models.DateTimeField(null=True, blank=True, verbose_name=_("calculé le"))
+
+    class Meta:
+        verbose_name = _("ciel")
+
+    def __str__(self):
+        return f"ciel de {len(self.regions)} région(s)"
