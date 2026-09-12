@@ -316,10 +316,6 @@
         });
       }
     }
-    // Le cadrage ne suit l'etoile choisie que dans le bandeau replie. Ailleurs
-    // il reecrirait le meme cadrage et remesurerait quinze etiquettes pour
-    // rien. / Only the folded band follows the chosen star.
-    if (surMobile() && replie) cadrer();
   }
 
   function clignoter(fiche) {
@@ -378,12 +374,6 @@
   const RAYON_DU_DOIGT = 30;
 
   svg.addEventListener("click", (evenement) => {
-    // UN GLISSEMENT N'EST PAS UN APPUI. Deplacer la carte finit par un `click`
-    // comme n'importe quel geste : sans ce garde, chaque deplacement
-    // selectionnerait l'etoile qui se trouve sous le doigt a l'arrivee.
-    // / A drag ends with a click too: without this, panning would select.
-    if (aGlisse) { aGlisse = false; return; }
-
     /*
      * LA CONVERSION PASSE PAR LA MATRICE DU SVG. Calculer a la main depuis le
      * cadre suppose que le dessin remplit exactement le panneau : sous
@@ -450,282 +440,53 @@
 
   const panneauCiel = document.querySelector(".panneau-ciel");
 
-  // DEUX SEUILS, ET NON UN SEUL : replier a 260 px et deployer a 200 px. Avec
-  // un seuil unique, le changement de hauteur deplace la page, ce qui repasse
-  // le seuil, et le bandeau bat entre ses deux etats.
-  // / Hysteresis: one threshold makes the band oscillate.
-  const SEUIL_DU_REPLI = 260;
-  const SEUIL_DU_DEPLOIEMENT = 200;
-  const FENETRE_REPLIEE = 420;
-
-  let replie = false;
-  let grand = false;
-  let enAttente = false;
-
+  /*
+   * DEUX HAUTEURS, ET PLUS RIEN QUI DEPENDE DU DEFILEMENT.
+   * Le panneau est DANS LE FLUX : le replier pendant qu'on defile raccourcit
+   * le document de pres d'un tiers d'ecran, le navigateur ramene alors le
+   * defilement, ce qui repasse le seuil, ce qui redeploie — la page clignotait
+   * et remontait toute seule, sur Firefox comme sur Chrome. Aucune hysteresis
+   * ne pouvait tenir : le saut valait quatre fois la marge entre les seuils.
+   * Toucher une etoile entrait dans la meme boucle, puisque cela fait defiler
+   * la liste. La hauteur ne change donc plus que sur demande explicite.
+   * / Nothing depends on scrolling: the panel sits in the flow, so folding it
+   *   mid-scroll moved the document under the finger.
+   */
   const poignee = document.getElementById("poignee-ciel");
+  let grand = false;
 
   poignee.addEventListener("click", () => {
     grand = !grand;
-    // ON NE PEUT PAS ETRE A LA FOIS EN BANDEAU ET EN GRAND. Tant que la
-    // poignee tient le grand format, le defilement ne replie plus : c'est
-    // l'utilisateur qui a demande cette hauteur, pas la page.
-    // / While the handle holds the tall state, scrolling stops folding.
-    if (grand) replie = false;
-    // QUITTER LE GRAND FORMAT OUBLIE LE DEPLACEMENT : on ne garde pas une
-    // fenetre zoomee dans un bandeau de deux centimetres, ou plus rien ne
-    // serait reconnaissable. / Leaving the tall state forgets the pan.
-    vue = null;
-    vueEntiere = null;
-    // ET LES DOIGTS EN COURS AVEC. Toucher la poignee d'un second doigt
-    // pendant un deplacement laissait un geste sans vue a manipuler, et le
-    // mouvement suivant levait une erreur.
-    // / Clear the fingers too: a gesture without a view throws.
-    doigts.clear();
-    depart = null;
     panneauCiel.classList.toggle("grand", grand);
-    panneauCiel.classList.toggle("replie", replie);
-
     poignee.setAttribute("aria-expanded", String(grand));
     poignee.querySelector(".poignee-mot").textContent =
       grand ? poignee.dataset.reduire : poignee.dataset.agrandir;
-    // Pas de `cadrer()` ici : la hauteur du panneau s'anime, et la mesure
-    // prise maintenant serait celle d'avant. L'observateur ci-dessous le fera
-    // quand la taille aura vraiment change.
-    // / No cadrer() here: the panel height is still animating.
+    // Pas de mesure ici : la hauteur s'anime encore, et ce qu'on lirait serait
+    // celle d'avant. L'observateur replacera les noms quand la taille aura
+    // vraiment change. / No measuring here: the height is still animating.
   });
-
-  window.addEventListener("scroll", () => {
-    if (!surMobile() || grand || enAttente) return;
-    enAttente = true;
-    requestAnimationFrame(() => {
-      enAttente = false;
-      const doitReplier = replie
-        ? window.scrollY > SEUIL_DU_DEPLOIEMENT
-        : window.scrollY > SEUIL_DU_REPLI;
-      if (doitReplier === replie) return;
-      replie = doitReplier;
-      panneauCiel.classList.toggle("replie", replie);
-      // Le cadrage attend l'observateur : la hauteur est en train de changer.
-      // / The framing waits for the observer: the height is still moving.
-    });
-  }, { passive: true });
-
-  function cadrer() {
-    // UNE VUE DEPLACEE A LA MAIN PRIME SUR TOUT CADRAGE AUTOMATIQUE : on ne
-    // ramene pas quelqu'un au point de depart parce qu'il a touche une etoile.
-    // / A hand-moved view wins: we never yank it back.
-    if (vue) {
-      ecrireLaVue();
-      poserLesEtiquettes();
-      return;
-    }
-    if (!surMobile() || !replie) {
-      svg.setAttribute("viewBox", `0 0 ${COTE} ${COTE}`);
-    } else {
-      /*
-       * REPLIE, ON NE MONTRE PAS UN CIEL MINUSCULE : on cadre la zone autour
-       * de l'etoile en cours. Et la fenetre prend le RATIO DU BANDEAU : une
-       * fenetre carree dans un bandeau large et court serait ramenee a un
-       * carre de la hauteur du bandeau — on aurait retreci le ciel au lieu de
-       * le cadrer. / Collapsed, we frame the current star, at the band's ratio.
-       */
-      const centre = CORPUS.find((c) => c.uuid === choisie) || { x: 0.5, y: 0.5 };
-      const cadre = svg.getBoundingClientRect();
-      const largeur = FENETRE_REPLIEE;
-      const hauteur = cadre.width ? largeur * (cadre.height / cadre.width) : largeur;
-      const borne = (valeur, taille) => Math.max(0, Math.min(COTE - taille, valeur));
-      const x = borne(centre.x * COTE - largeur / 2, largeur);
-      const y = borne(centre.y * COTE - hauteur / 2, hauteur);
-      svg.setAttribute(
-        "viewBox",
-        `${x.toFixed(0)} ${y.toFixed(0)} ${largeur.toFixed(0)} ${hauteur.toFixed(0)}`
-      );
-    }
-    // L'echelle a change, donc la taille visee des etiquettes aussi.
-    // / The scale changed, so the labels' target size did too.
-    poserLesEtiquettes();
-  }
-
-  // --------------------------------------------- se deplacer dans la carte
 
   /*
-   * DEPLACEMENT A UN DOIGT, ZOOM A DEUX, EN GRAND FORMAT SEULEMENT. Le CSS
-   * ne nous donne le geste que la (`touch-action: none` sur `.grand`) : ailleurs
-   * le doigt doit continuer de faire defiler la page.
-   * / One finger pans, two pinch, and only in the tall state.
-   */
-  const ZOOM_MAXIMAL = 4;          // au-dela, on ne voit plus de paysage
-  const GLISSEMENT_MINIMAL = 8;    // en pixels : en dessous, c'est un appui
-
-  let vue = null;          // {x, y, largeur, hauteur} des qu'on touche la carte
-  let vueEntiere = null;   // le cadrage d'ou l'on part : on ne dezoome pas plus
-  let aGlisse = false;
-  let depart = null;
-  const doigts = new Map();
-
-  const milieu = (points) => ({
-    x: points.reduce((somme, p) => somme + p.x, 0) / points.length,
-    y: points.reduce((somme, p) => somme + p.y, 0) / points.length,
-  });
-
-  const ecartEntre = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
-
-  function ecrireLaVue() {
-    // UNE DECIMALE, ET NON ZERO : a fort grossissement une unite vaut plus
-    // d'un pixel et demi, et arrondir a l'entier faisait sauter la carte d'un
-    // cran a chaque image. / One decimal: at full zoom a unit is over a pixel.
-    svg.setAttribute(
-      "viewBox",
-      `${vue.x.toFixed(1)} ${vue.y.toFixed(1)} `
-      + `${vue.largeur.toFixed(1)} ${vue.hauteur.toFixed(1)}`
-    );
-  }
-
-  function memoriserLeDepart() {
-    const points = [...doigts.values()];
-    const matrice = svg.getScreenCTM();
-    depart = {
-      vue: { ...vue },
-      milieu: milieu(points),
-      ecart: points.length >= 2 ? ecartEntre(points[0], points[1]) : 0,
-      /*
-       * L'ECHELLE SE LIT DANS LA MATRICE, ET SE FIGE POUR TOUT LE GESTE.
-       * Sous `preserveAspectRatio`, le dessin est mis a l'echelle par le PLUS
-       * PETIT des deux rapports : `largeur / largeurDuCadre` est faux des que
-       * le panneau n'a pas le rapport de la vue, et le paysage n'avance alors
-       * ni a la vitesse ni dans la proportion du doigt. Figee au depart, elle
-       * evite en plus qu'un pincement en cours ne change la conversion sous
-       * nos pieds.
-       * / Read from the matrix, frozen for the gesture.
-       */
-      parPixel: matrice ? 1 / matrice.a : 1,
-    };
-  }
-
-  function bornerLaVue() {
-    // ON NE SORT JAMAIS DU CADRAGE DE DEPART, ni en zoom ni en deplacement :
-    // sans cette borne, on derivait dans le vide, hors du ciel, sans rien pour
-    // se raccrocher. La vue garde aussi le RAPPORT du cadrage de depart, sinon
-    // `preserveAspectRatio` ajouterait ses propres bandes et fausserait
-    // l'echelle. / We never leave the starting frame, and we keep its ratio.
-    const rapport = vueEntiere.hauteur / vueEntiere.largeur;
-    vue.largeur = Math.min(
-      vueEntiere.largeur,
-      Math.max(vueEntiere.largeur / ZOOM_MAXIMAL, vue.largeur)
-    );
-    vue.hauteur = vue.largeur * rapport;
-
-    const dans = (valeur, taille, debut, etendue) =>
-      Math.max(debut, Math.min(valeur, debut + etendue - taille));
-    vue.x = dans(vue.x, vue.largeur, vueEntiere.x, vueEntiere.largeur);
-    vue.y = dans(vue.y, vue.hauteur, vueEntiere.y, vueEntiere.hauteur);
-  }
-
-  svg.addEventListener("pointerdown", (evenement) => {
-    if (!surMobile() || !grand) return;
-    svg.setPointerCapture(evenement.pointerId);
-    doigts.set(evenement.pointerId, { x: evenement.clientX, y: evenement.clientY });
-    if (doigts.size === 1) aGlisse = false;
-    if (!vue) {
-      /*
-       * LA REFERENCE EST LA ZONE REELLEMENT VISIBLE, ET NON LE `viewBox`.
-       * Sous `preserveAspectRatio`, un viewBox carre dans un panneau en
-       * hauteur laisse deux bandes de papier vide : le prendre pour reference
-       * gardait ce vide a tous les niveaux de zoom, et le grossissement ne
-       * remplissait jamais l'ecran. On convertit donc les coins du panneau en
-       * unites du ciel : a l'ecran c'est identique — rien ne saute — mais la
-       * reference a enfin le rapport du cadre.
-       * / The visible area, not the viewBox: a square viewBox in a tall panel
-       *   keeps empty bands at every zoom level.
-       */
-      const matrice = svg.getScreenCTM();
-      const cadre = svg.getBoundingClientRect();
-      if (!matrice) return;
-      const coin = new DOMPoint(cadre.left, cadre.top).matrixTransform(matrice.inverse());
-      vueEntiere = {
-        x: coin.x, y: coin.y,
-        largeur: cadre.width / matrice.a, hauteur: cadre.height / matrice.a,
-      };
-      vue = { ...vueEntiere };
-    }
-    memoriserLeDepart();
-  });
-
-  svg.addEventListener("pointermove", (evenement) => {
-    if (!doigts.has(evenement.pointerId) || !depart) return;
-    doigts.set(evenement.pointerId, { x: evenement.clientX, y: evenement.clientY });
-
-    const points = [...doigts.values()];
-    const centre = milieu(points);
-
-    if (points.length >= 2 && depart.ecart > 0) {
-      const facteur = depart.ecart / (ecartEntre(points[0], points[1]) || 1);
-      const largeur = depart.vue.largeur * facteur;
-      const hauteur = depart.vue.hauteur * facteur;
-      // Le centre de l'ecran reste fixe : la carte grandit sur place au lieu
-      // de fuir vers un coin. / The screen centre stays put.
-      vue.x = depart.vue.x + (depart.vue.largeur - largeur) / 2;
-      vue.y = depart.vue.y + (depart.vue.hauteur - hauteur) / 2;
-      vue.largeur = largeur;
-      vue.hauteur = hauteur;
-    } else {
-      // Le paysage suit le doigt : on deplace la fenetre a l'oppose du geste.
-      // / The landscape follows the finger: the window moves the other way.
-      vue.x = depart.vue.x - (centre.x - depart.milieu.x) * depart.parPixel;
-      vue.y = depart.vue.y - (centre.y - depart.milieu.y) * depart.parPixel;
-    }
-
-    if (ecartEntre(centre, depart.milieu) > GLISSEMENT_MINIMAL) aGlisse = true;
-
-    bornerLaVue();
-    // On ecrit le cadrage SANS replacer les etiquettes : quinze mesures de
-    // texte par image rendraient le geste poussif. Elles se replacent au
-    // relachement. / No label layout mid-gesture.
-    ecrireLaVue();
-  });
-
-  function relacher(evenement) {
-    if (!doigts.delete(evenement.pointerId)) return;
-    if (doigts.size) { memoriserLeDepart(); return; }   // un doigt sur deux levé
-    depart = null;
-    cadrer();     // l'echelle a change : les etiquettes se replacent ici
-  }
-  svg.addEventListener("pointerup", relacher);
-  svg.addEventListener("pointercancel", relacher);
-  // UN DOIGT PERDU RESTERAIT DANS LA LISTE. Un passage a une autre
-  // application, une alerte du systeme, et le navigateur ne livre parfois que
-  // `lostpointercapture` : le geste suivant devenait un pincement fantome.
-  // / A lost pointer would linger and turn the next gesture into a pinch.
-  svg.addEventListener("lostpointercapture", relacher);
-
-  /*
-   * PAS DE DOUBLE-TOUCHER POUR REMONTER LA PAGE. Il entrait en concurrence
-   * avec le defilement que la selection d'une etoile declenche, et avec le
-   * double-tap dont on se sert pour explorer la carte : deux gestes pour deux
-   * intentions contraires, au meme endroit. La poignee suffit a retrouver le
-   * ciel entier.
-   * / No double-tap to scroll up: it fought the selection's own scroll.
+   * NI DEPLACEMENT NI ZOOM : LE CIEL MONTRE TOUJOURS TOUT LE CIEL.
+   * Un deplacement au doigt demandait de prendre le geste au navigateur, donc
+   * d'empecher la page de defiler depuis le ciel ; et une fenetre cadree sans
+   * moyen de s'y deplacer rendrait les autres etoiles inaccessibles. Le cadre
+   * est donc fixe, et un appui choisit l'etoile la plus proche : c'est tout ce
+   * dont on a besoin pour l'instant.
+   * / No pan, no zoom: the sky always shows the whole sky.
    */
 
   /*
    * ON OBSERVE LA TAILLE DU CIEL, ON N'ECOUTE PAS `resize`.
-   * La hauteur du panneau s'anime sur un quart de seconde : cadrer au moment
-   * du clic mesurait la hauteur d'AVANT, et la fenetre repliee recevait le
-   * rapport du format deploye — `preserveAspectRatio` la calait alors sur la
-   * hauteur en laissant deux bandes vides, et le ciel paraissait rétréci.
-   * Rien ne le recalculait ensuite. L'observateur couvre la fin de la
-   * transition, la rotation de l'appareil, l'apparition de la barre d'adresse
-   * et le redimensionnement du bureau — un seul mecanisme au lieu de quatre.
-   * / We observe the sky's size: cadrer() during the height transition measured
-   *   the old height, and nothing recomputed it afterwards.
+   * La hauteur du panneau s'anime sur un quart de seconde : placer les noms au
+   * moment du clic les mesurerait a la hauteur d'AVANT, et rien ne les
+   * reprendrait ensuite. L'observateur couvre la fin de la transition, la
+   * rotation de l'appareil, l'apparition de la barre d'adresse et le
+   * redimensionnement du bureau — un seul mecanisme au lieu de quatre.
+   * / One observer covers the transition's end, rotation, the address bar and
+   *   desktop resizing: laying out at click time measures the old height.
    */
-  new ResizeObserver(() => {
-    // Revenu sur le bureau, une vue zoomee ne se quitterait plus : la poignee
-    // qui l'annule n'y existe pas. / On a desktop the handle is gone, so a
-    // zoomed view would be stuck.
-    if (!surMobile()) { vue = null; vueEntiere = null; }
-    cadrer();
-  }).observe(svg);
+  new ResizeObserver(() => poserLesEtiquettes()).observe(svg);
 
   // ---------------------------------------------------------------- la derive
 
@@ -869,8 +630,8 @@
    * / Labels are sized from the sky's scale: laid out before the panel has its
    *   final size, everything is measured too large. Eight against fourteen.
    */
-  requestAnimationFrame(() => cadrer());
-  document.fonts?.ready?.then(() => cadrer());
+  requestAnimationFrame(() => poserLesEtiquettes());
+  document.fonts?.ready?.then(() => poserLesEtiquettes());
 
   // Le bouton actif doit refleter le choix retenu en memoire, sinon la page
   // colore par la duree tout en montrant « Voix » enfonce.

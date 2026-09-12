@@ -383,27 +383,20 @@
     .panneau-liste {
       border-right: 0; overflow: visible; padding: var(--space-md);
     }
-    /* TOUJOURS VISIBLE : collé en haut de l'écran, il ne défile jamais hors de
-       vue — il se contente de se replier en bandeau.
-       / Always visible: it never scrolls away, it only folds into a band. */
+    /* TOUJOURS VISIBLE, ET EN BANDEAU PAR DÉFAUT : collé en haut de l'écran,
+       il ne défile jamais hors de vue. On vient d'abord pour lire les
+       clameurs ; le ciel se déploie à la demande.
+       / Always visible, folded by default: the list comes first. */
     .panneau-ciel {
       order: -1;
-      position: sticky; top: 0; z-index: 2; height: 50dvh;
+      position: sticky; top: 0; z-index: 2; height: 26dvh;
       border-bottom: 1px solid var(--color-trait);
       transition: height var(--dur-moyen) var(--ease-out);
     }
-    .panneau-ciel.replie { height: 22dvh; }
     /* Le grand format s'arrête à 78 % : une fiche doit rester visible en bas,
        sinon plus rien ne dit qu'il y a une liste sous la carte.
        / 78 %, never 100 %: one card must remain, or the list disappears. */
     .panneau-ciel.grand { height: 78dvh; }
-
-    /* LE DOIGT NE NOUS APPARTIENT QU'EN GRAND FORMAT. Prendre le geste au
-       navigateur empêche de faire défiler la page en partant du ciel : on ne
-       le fait donc que là où la carte est grande — là où l'on a demandé à
-       l'explorer. Ailleurs, le doigt continue de défiler.
-       / We only take the gesture where the map is large. */
-    .panneau-ciel.grand #ciel { touch-action: none; }
 
     .commandes {
       left: var(--space-xs); bottom: var(--space-xs); padding: var(--space-xs);
@@ -414,28 +407,45 @@
        bas du ciel — là où l'œil cherche la limite entre les deux écrans — et
        suit sa hauteur sans qu'on ait à la calculer.
        / Bottom right: the colour controls hold the left corner. */
+    /* DEUX BOUTONS, UN CRAN A LA FOIS. Un seul bouton qui ferait le tour des
+       trois hauteurs obligerait à deviner ce qui vient ensuite ; deux flèches
+       disent où l'on va, et s'éteignent quand il n'y a plus de cran.
+       / Two arrows say where you are going; one cycling button would not. */
     .poignee {
-      display: flex; align-items: center; gap: var(--space-xs);
+      display: flex; align-items: center; gap: var(--space-2xs);
       position: absolute; right: var(--space-xs); bottom: var(--space-2xs);
-      min-height: 44px; padding: 0 var(--space-sm);
+      padding: var(--space-2xs);
       background: oklch(0.19 0.022 45 / 0.86);
       border: 1px solid var(--color-trait); border-radius: var(--radius-pilule);
-      color: var(--color-ink-doux); font: inherit; font-size: var(--text-xs);
-      cursor: pointer;
-      transition: color var(--dur-court) var(--ease-out);
     }
-    .poignee:hover, .poignee:focus-visible { color: var(--color-ink); }
+    .poignee button {
+      display: flex; align-items: center; justify-content: center;
+      width: 40px; height: 40px; border-radius: 50%;
+      background: transparent; border: 0; cursor: pointer;
+      color: var(--color-ink-doux);
+      transition: color var(--dur-court) var(--ease-out),
+                  background var(--dur-court) var(--ease-out);
+    }
+    .poignee button:hover { color: var(--color-ink); background: var(--color-paper-3); }
+    .poignee button:focus-visible {
+      outline: 2px solid var(--color-focus); outline-offset: 2px;
+    }
+    /* Éteint plutôt que caché : la commande garde sa place, et l'œil n'a pas à
+       rechercher l'autre flèche qui aurait bougé.
+       / Dimmed, not hidden: the control keeps its place. */
+    .poignee button:disabled { color: var(--color-ink-tenu); opacity: .35; cursor: default; }
 
     /* Le même triangle que le dépliant d'une fiche : un vocabulaire déjà
        connu du visiteur, et six lignes de CSS au lieu d'une icône.
        / The same triangle the cards already use. */
     .poignee-signal {
       width: 0; height: 0; flex: none;
-      border-left: 5px solid transparent; border-right: 5px solid transparent;
-      border-bottom: 6px solid currentColor;
-      transition: transform var(--dur-court) var(--ease-out);
+      border-left: 6px solid transparent; border-right: 6px solid transparent;
+      border-bottom: 7px solid currentColor;
     }
-    .panneau-ciel.grand .poignee-signal { transform: rotate(180deg); }
+    .poignee-signal.vers-le-bas {
+      border-bottom: 0; border-top: 7px solid currentColor;
+    }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -573,10 +583,15 @@
   </div>
 
   {% comment %} TROIS HAUTEURS, UNE SEULE COMMANDE : elle agrandit, puis elle
-     revient. Le défilement, lui, replie de son côté — un même bouton qui
-     ferait les trois deviendrait un jeu de devinettes.
+     revient. Deux hauteurs seulement : un bouton qui ferait le tour de trois
+     obligerait à deviner ce qui vient ensuite.
      Invisible sur le bureau, où le ciel occupe déjà toute sa colonne.
      / One control, one job: it enlarges and it comes back. {% endcomment %}
+  {% comment %} DEUX HAUTEURS, UN BOUTON. Le ciel s'ouvre en bandeau — on vient
+     d'abord pour lire les clameurs — et la poignée le déploie quand on veut le
+     regarder. Aucune hauteur ne dépend du défilement : changer la hauteur d'un
+     élément du flux pendant qu'on défile déplaçait la page sous le doigt.
+     / Two heights, one button, and nothing tied to scrolling. {% endcomment %}
   <button type="button" class="poignee" id="poignee-ciel"
           aria-expanded="false" aria-controls="ciel"
           data-agrandir="{% translate 'Agrandir le ciel' %}"
