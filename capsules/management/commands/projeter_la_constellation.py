@@ -61,10 +61,33 @@ class Command(BaseCommand):
         )
 
         if resultat == "trop peu" or len(projetees) < 3:
+            # ON COMPTE CE QUI EXISTE, ET NON CE QUI EST PROJETE. Le message
+            # annoncait « 0 clameur exploitable » meme avec deux clameurs
+            # vectorisees, parce qu'il lisait les positions — que le calcul
+            # venait justement d'effacer. Il envoyait alors relancer un
+            # enrichissement deja fait.
+            # / Count what exists, not what got projected: the old message read
+            #   positions the computation had just cleared.
+            publiees = Capsule.objects.filter(statut=StatutCapsule.PUBLIEE)
+            nombre = publiees.count()
+            avec_vecteur = publiees.exclude(embedding=None).count()
+
             self.stdout.write(self.style.WARNING(
-                f"{len(projetees)} clameur(s) exploitable(s) : trop peu pour projeter. "
-                "Lance d'abord l'enrichissement, ou `creer_des_clameurs`."
+                f"Trop peu pour projeter : {avec_vecteur} clameur(s) avec vecteur "
+                f"sur {nombre} publiée(s), et il en faut au moins trois."
             ))
+            if avec_vecteur:
+                self.stdout.write(
+                    "  Elles sont posées côte à côte, sans relief : le ciel ne "
+                    "prend son sens qu'à partir de trois clameurs."
+                )
+            if not nombre:
+                self.stdout.write("  Aucune clameur publiée. Essaie `make fixture`.")
+            elif avec_vecteur < nombre:
+                self.stdout.write(
+                    "  Les autres attendent leur vecteur : `make vecteurs` "
+                    "(un appel payant par clameur)."
+                )
             return
 
         objet = Ciel.get_solo()

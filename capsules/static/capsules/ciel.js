@@ -219,6 +219,10 @@
       etoile.addEventListener("keydown", (evenement) => {
         if (evenement.key === "Enter" || evenement.key === " ") {
           evenement.preventDefault();
+          // Au clavier comme au doigt : choisir une etoile arrete la derive,
+          // sinon elle repartirait de celle-ci au morceau suivant.
+          // / Keyboard or finger alike: choosing a star stops the drift.
+          arreterLaDerive();
           choisir(clameur.uuid, "ciel");
         }
       });
@@ -266,10 +270,15 @@
   const panneauListe = document.getElementById("panneau-liste");
   const surMobile = () => window.matchMedia("(max-width: 800px)").matches;
 
-  // Declare ICI bien qu'il ne serve qu'a la derive : l'ecouteur `play`
-  // ci-dessous le compare pour ne pas s'arreter lui-meme.
-  // / Declared here though only the drift uses it.
   const lecteurDeLaDerive = new Audio();
+
+  // `scroll-behavior` en CSS ne s'applique PAS a `scrollTo({behavior})` : la
+  // preference doit se lire ici, sinon la page glisse quand meme sous les yeux
+  // de qui a demande qu'elle ne bouge pas.
+  // / CSS scroll-behavior does not govern scrollTo({behavior}).
+  const GLISSEMENT = matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
 
   function choisir(uuid, origine) {
     if (choisie && choisie !== uuid) {
@@ -298,16 +307,19 @@
       if (surMobile()) {
         window.scrollTo({
           top: fiche.getBoundingClientRect().top + window.scrollY - window.innerHeight * 0.45,
-          behavior: "smooth",
+          behavior: GLISSEMENT,
         });
       } else {
         panneauListe.scrollTo({
           top: fiche.offsetTop - panneauListe.clientHeight / 2 + fiche.offsetHeight / 2,
-          behavior: "smooth",
+          behavior: GLISSEMENT,
         });
       }
     }
-    cadrer();
+    // Le cadrage ne suit l'etoile choisie que dans le bandeau replie. Ailleurs
+    // il reecrirait le meme cadrage et remesurerait quinze etiquettes pour
+    // rien. / Only the folded band follows the chosen star.
+    if (surMobile() && replie) cadrer();
   }
 
   function clignoter(fiche) {
@@ -332,7 +344,11 @@
     for (const autre of document.querySelectorAll("audio")) {
       if (autre !== lecteur && !autre.paused) autre.pause();
     }
-    if (lecteur !== lecteurDeLaDerive) arreterLaDerive();
+    // Lancer un lecteur de fiche arrete la derive. Pas de comparaison avec le
+    // lecteur de la derive : il vit hors du document, son `play` ne remonte
+    // jamais jusqu'ici. / The drift's player is outside the document; its play
+    // event never reaches this listener.
+    arreterLaDerive();
 
     const uuid = lecteur.dataset.uuid;
     if (uuid) {
@@ -388,9 +404,13 @@
       if (ecart < distance) { distance = ecart; trouvee = clameur; }
     }
     // Au-dela du rayon, on ne choisit rien : un appui dans le vide ne doit pas
-    // faire sauter la liste a l'autre bout du corpus.
-    // / Beyond the radius, nothing: a tap in the void must not jump the list.
-    if (trouvee && distance <= RAYON_DU_DOIGT * parPixel) choisir(trouvee.uuid, "ciel");
+    // faire sauter la liste a l'autre bout du corpus, NI arreter une derive en
+    // cours — c'est le choix d'une autre etoile qui l'arrete, pas un appui
+    // manque. / A missed tap must neither jump the list nor stop the drift.
+    if (trouvee && distance <= RAYON_DU_DOIGT * parPixel) {
+      arreterLaDerive();
+      choisir(trouvee.uuid, "ciel");
+    }
   });
 
   // ------------------------------------------------------------ la recherche
@@ -418,6 +438,12 @@
     if (choisie) {
       document.getElementById(`clameur-${choisie}`)?.setAttribute("aria-current", "true");
     }
+    // LA BARRE DE PROGRESSION SUIT LA FICHE NEUVE. Sans cela, chercher un mot
+    // pendant une derive laissait la barre sur une fiche detachee du document,
+    // et l'ecoute en cours n'avait plus rien de visible.
+    // / The progress bar must follow the fresh card, or it writes into a
+    //   detached element while the drift keeps playing.
+    if (ficheEnDerive) marquerLaDerive(ficheEnDerive.dataset.uuid);
   });
 
   // --------------------------------------------------------- le bandeau mobile
@@ -450,13 +476,22 @@
     // serait reconnaissable. / Leaving the tall state forgets the pan.
     vue = null;
     vueEntiere = null;
+    // ET LES DOIGTS EN COURS AVEC. Toucher la poignee d'un second doigt
+    // pendant un deplacement laissait un geste sans vue a manipuler, et le
+    // mouvement suivant levait une erreur.
+    // / Clear the fingers too: a gesture without a view throws.
+    doigts.clear();
+    depart = null;
     panneauCiel.classList.toggle("grand", grand);
     panneauCiel.classList.toggle("replie", replie);
 
     poignee.setAttribute("aria-expanded", String(grand));
     poignee.querySelector(".poignee-mot").textContent =
       grand ? poignee.dataset.reduire : poignee.dataset.agrandir;
-    cadrer();
+    // Pas de `cadrer()` ici : la hauteur du panneau s'anime, et la mesure
+    // prise maintenant serait celle d'avant. L'observateur ci-dessous le fera
+    // quand la taille aura vraiment change.
+    // / No cadrer() here: the panel height is still animating.
   });
 
   window.addEventListener("scroll", () => {
@@ -470,7 +505,8 @@
       if (doitReplier === replie) return;
       replie = doitReplier;
       panneauCiel.classList.toggle("replie", replie);
-      cadrer();
+      // Le cadrage attend l'observateur : la hauteur est en train de changer.
+      // / The framing waits for the observer: the height is still moving.
     });
   }, { passive: true });
 
@@ -535,10 +571,13 @@
   const ecartEntre = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 
   function ecrireLaVue() {
+    // UNE DECIMALE, ET NON ZERO : a fort grossissement une unite vaut plus
+    // d'un pixel et demi, et arrondir a l'entier faisait sauter la carte d'un
+    // cran a chaque image. / One decimal: at full zoom a unit is over a pixel.
     svg.setAttribute(
       "viewBox",
-      `${vue.x.toFixed(0)} ${vue.y.toFixed(0)} `
-      + `${vue.largeur.toFixed(0)} ${vue.hauteur.toFixed(0)}`
+      `${vue.x.toFixed(1)} ${vue.y.toFixed(1)} `
+      + `${vue.largeur.toFixed(1)} ${vue.hauteur.toFixed(1)}`
     );
   }
 
@@ -588,12 +627,24 @@
     doigts.set(evenement.pointerId, { x: evenement.clientX, y: evenement.clientY });
     if (doigts.size === 1) aGlisse = false;
     if (!vue) {
-      // LE CADRAGE EN COURS DEVIENT LA REFERENCE, tel quel : le reprendre a
-      // l'identique evite que la carte ne saute au premier contact.
-      // / The current framing becomes the reference, so nothing jumps.
-      const boite = svg.viewBox.baseVal;
+      /*
+       * LA REFERENCE EST LA ZONE REELLEMENT VISIBLE, ET NON LE `viewBox`.
+       * Sous `preserveAspectRatio`, un viewBox carre dans un panneau en
+       * hauteur laisse deux bandes de papier vide : le prendre pour reference
+       * gardait ce vide a tous les niveaux de zoom, et le grossissement ne
+       * remplissait jamais l'ecran. On convertit donc les coins du panneau en
+       * unites du ciel : a l'ecran c'est identique — rien ne saute — mais la
+       * reference a enfin le rapport du cadre.
+       * / The visible area, not the viewBox: a square viewBox in a tall panel
+       *   keeps empty bands at every zoom level.
+       */
+      const matrice = svg.getScreenCTM();
+      const cadre = svg.getBoundingClientRect();
+      if (!matrice) return;
+      const coin = new DOMPoint(cadre.left, cadre.top).matrixTransform(matrice.inverse());
       vueEntiere = {
-        x: boite.x, y: boite.y, largeur: boite.width, hauteur: boite.height,
+        x: coin.x, y: coin.y,
+        largeur: cadre.width / matrice.a, hauteur: cadre.height / matrice.a,
       };
       vue = { ...vueEntiere };
     }
@@ -641,14 +692,40 @@
   }
   svg.addEventListener("pointerup", relacher);
   svg.addEventListener("pointercancel", relacher);
+  // UN DOIGT PERDU RESTERAIT DANS LA LISTE. Un passage a une autre
+  // application, une alerte du systeme, et le navigateur ne livre parfois que
+  // `lostpointercapture` : le geste suivant devenait un pincement fantome.
+  // / A lost pointer would linger and turn the next gesture into a pinch.
+  svg.addEventListener("lostpointercapture", relacher);
 
-  // Le bandeau replie ramene en haut de page, ou le ciel est entier.
-  // / The collapsed band takes you back to the full sky.
-  panneauCiel.addEventListener("dblclick", () => {
-    if (surMobile()) window.scrollTo({ top: 0, behavior: "smooth" });
-  });
+  /*
+   * PAS DE DOUBLE-TOUCHER POUR REMONTER LA PAGE. Il entrait en concurrence
+   * avec le defilement que la selection d'une etoile declenche, et avec le
+   * double-tap dont on se sert pour explorer la carte : deux gestes pour deux
+   * intentions contraires, au meme endroit. La poignee suffit a retrouver le
+   * ciel entier.
+   * / No double-tap to scroll up: it fought the selection's own scroll.
+   */
 
-  window.addEventListener("resize", cadrer);
+  /*
+   * ON OBSERVE LA TAILLE DU CIEL, ON N'ECOUTE PAS `resize`.
+   * La hauteur du panneau s'anime sur un quart de seconde : cadrer au moment
+   * du clic mesurait la hauteur d'AVANT, et la fenetre repliee recevait le
+   * rapport du format deploye — `preserveAspectRatio` la calait alors sur la
+   * hauteur en laissant deux bandes vides, et le ciel paraissait rétréci.
+   * Rien ne le recalculait ensuite. L'observateur couvre la fin de la
+   * transition, la rotation de l'appareil, l'apparition de la barre d'adresse
+   * et le redimensionnement du bureau — un seul mecanisme au lieu de quatre.
+   * / We observe the sky's size: cadrer() during the height transition measured
+   *   the old height, and nothing recomputed it afterwards.
+   */
+  new ResizeObserver(() => {
+    // Revenu sur le bureau, une vue zoomee ne se quitterait plus : la poignee
+    // qui l'annule n'y existe pas. / On a desktop the handle is gone, so a
+    // zoomed view would be stuck.
+    if (!surMobile()) { vue = null; vueEntiere = null; }
+    cadrer();
+  }).observe(svg);
 
   // ---------------------------------------------------------------- la derive
 
@@ -773,13 +850,6 @@
     if (!prochaine) { arreterLaDerive(); return; }
     jouer(prochaine, presentes);
   });
-
-  // Toucher une autre etoile arrete la derive : jamais de son qui continue
-  // tout seul apres un geste contraire.
-  // / Tapping another star stops the drift.
-  svg.addEventListener("click", () => {
-    if (deriveActive && !lecteurDeLaDerive.paused) arreterLaDerive();
-  }, true);
 
   // ---------------------------------------------------------------- l'amorcage
 

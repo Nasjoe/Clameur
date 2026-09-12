@@ -43,7 +43,7 @@ def test_la_commande_ecrit_aussi_le_relief(corpus_projete):
     assert objet.calcule_le is not None
 
 
-def test_la_projection_refuse_de_travailler_sur_trop_peu(db, reglages):
+def test_sous_trois_clameurs_la_commande_le_dit_et_pose_quand_meme_les_etoiles(db, reglages):
     """Deux points ne font pas une constellation : la commande doit le dire
     plutôt que produire une projection dégénérée.
 
@@ -62,9 +62,25 @@ def test_la_projection_refuse_de_travailler_sur_trop_peu(db, reglages):
             embedding=list(alea.normal(0, 1, 1024)),
         )
 
-    call_command("projeter_la_constellation", verbosity=0)
+    import io
 
-    assert not Capsule.objects.exclude(position_x=None).exists()
+    tampon = io.StringIO()
+    call_command("projeter_la_constellation", stdout=tampon)
+
+    # LES ÉTOILES SONT POSÉES QUAND MÊME, côte à côte : en début d'événement,
+    # on doit voir ses clameurs. Mais AUCUN RELIEF ne les entoure — il
+    # décrirait une densité qui n'existe pas.
+    # / The stars are placed anyway; no relief pretends to describe them.
+    assert Capsule.objects.exclude(position_x=None).count() == 2
+    assert Ciel.get_solo().grille == []
+
+    # LE MESSAGE DOIT DIRE LA VÉRITÉ. Il annonçait « 0 clameur exploitable »
+    # alors que deux portent un vecteur : il lisait les positions, que le
+    # calcul venait d'effacer, et envoyait relancer un enrichissement déjà
+    # fait. / The message must not send the operator down a false trail.
+    message = tampon.getvalue()
+    assert "2 clameur(s) avec vecteur" in message, message
+    assert "côte à côte" in message, message
 
 
 # ------------------------------------------- ce que la carte dit vraiment

@@ -11,11 +11,10 @@
        qui verifie justement l'absence de virgule dans les positions.)
        / Without it the French locale uses decimal commas and every star is NaN. -->
   <!-- UN LIEN, PAS UN BOUTON : dans une liste, cliquer le nom d'une clameur
-       doit mener a la clameur. Le `data-choisir` reste pour le ciel, en
-       sommeil, qui s'y raccrochait pour illuminer l'etoile correspondante.
+       doit mener a la clameur. Le ciel, lui, se raccroche a la fiche par son
+       `id` et par `data-uuid` — il n'a besoin de rien d'autre ici.
        / A link, not a button: clicking a clameur's name must open it. -->
-  <a class="clameur-tete" href="{% url 'capsules:lire_capsule' clameur.capsule.uuid %}"
-     data-choisir="{{ clameur.capsule.uuid }}">
+  <a class="clameur-tete" href="{% url 'capsules:lire_capsule' clameur.capsule.uuid %}">
     <span class="pastille-liste" aria-hidden="true"></span>
     <span>
       <span class="clameur-nom">{% if clameur.capsule.titre %}{{ clameur.capsule.titre }}{% else %}{{ clameur.capsule.pseudo|default:_("Anonyme") }}{% endif %}</span>

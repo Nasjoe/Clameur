@@ -164,16 +164,21 @@ def test_un_vecteur_inexploitable_ne_relance_pas_la_projection_a_vie(reglages):
 
 
 @pytest.mark.django_db
-def test_moins_de_trois_clameurs_ecrit_un_ciel_vide(reglages):
-    """Un relief périmé sur un corpus qui n'existe plus serait pire que rien.
-    / A stale relief over a corpus that no longer exists is worse than nothing."""
+def test_sous_trois_clameurs_les_etoiles_sont_posees_sans_relief(reglages):
+    """En début d'événement, on doit voir ses clameurs tout de suite.
+
+    LEUR POSITION NE VEUT RIEN DIRE, et c'est assumé : à deux clameurs il n'y a
+    pas de voisinage à respecter. On les pose côte à côte, et l'on ne dessine
+    AUCUN relief — un relief prétendrait décrire une densité qui n'existe pas.
+    / Their position means nothing, and that is deliberate; the relief would
+      pretend to describe a density that does not exist.
+    """
     alea = np.random.default_rng(13)
-    # ELLE PORTE DEJA UNE POSITION, d'un calcul precedent : sans cela,
-    # l'assertion « plus aucune position » serait vraie avant meme l'appel.
-    Capsule.objects.create(
-        reglages=reglages, statut=StatutCapsule.PUBLIEE, duree_secondes=30,
-        embedding=list(alea.normal(0, 1, 1024)), position_x=0.5, position_y=0.5,
-    )
+    for _ in range(2):
+        Capsule.objects.create(
+            reglages=reglages, statut=StatutCapsule.PUBLIEE, duree_secondes=30,
+            embedding=list(alea.normal(0, 1, 1024)),
+        )
     ciel_perime = Ciel.get_solo()
     ciel_perime.grille, ciel_perime.regions = [[1.0]], [{"nom": "vieux"}]
     ciel_perime.save()
@@ -181,8 +186,36 @@ def test_moins_de_trois_clameurs_ecrit_un_ciel_vide(reglages):
     recalculer_le_ciel()
 
     objet = Ciel.get_solo()
-    assert objet.grille == [] and objet.regions == []
-    assert not Capsule.objects.exclude(position_x=None).exists()
+    assert objet.grille == [] and objet.regions == [], "aucun relief sous trois clameurs"
+
+    placees = list(Capsule.objects.exclude(position_x=None))
+    assert len(placees) == 2, "les clameurs doivent avoir une étoile malgré tout"
+    for capsule in placees:
+        assert 0 < capsule.position_x < 1 and 0 < capsule.position_y < 1
+    assert len({capsule.position_x for capsule in placees}) == 2, (
+        "les deux étoiles se superposent"
+    )
+
+
+@pytest.mark.django_db
+def test_une_clameur_au_vecteur_abime_n_a_pas_d_etoile_de_secours(reglages):
+    """Le placement de secours ne vaut que pour ce qui est exploitable : une
+    capsule au vecteur nul n'a pas d'étoile, ici comme ailleurs.
+    / The fallback placement is for usable vectors only.
+    """
+    alea = np.random.default_rng(14)
+    Capsule.objects.create(
+        reglages=reglages, statut=StatutCapsule.PUBLIEE, duree_secondes=30,
+        embedding=[0.0] * 1024,
+    )
+    Capsule.objects.create(
+        reglages=reglages, statut=StatutCapsule.PUBLIEE, duree_secondes=30,
+        embedding=list(alea.normal(0, 1, 1024)),
+    )
+
+    recalculer_le_ciel()
+
+    assert Capsule.objects.exclude(position_x=None).count() == 1
 
 
 # ------------------------------------------------- le rattrapage des vecteurs

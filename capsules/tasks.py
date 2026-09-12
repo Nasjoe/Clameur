@@ -370,7 +370,20 @@ def recalculer_le_ciel() -> str:
         vecteurs = vecteurs[exploitables] if len(capsules) else vecteurs
 
         if len(retenues) < 3:
-            Capsule.objects.exclude(position_x=None).update(position_x=None, position_y=None)
+            # SOUS TROIS CLAMEURS, ON POSE LES ETOILES SANS RELIEF. En debut
+            # d'evenement, on doit voir sa clameur arriver ; mais a deux, il n'y
+            # a aucun voisinage a respecter : leur position ne veut rien dire,
+            # et un relief pretendrait decrire une densite qui n'existe pas.
+            # / Below three, place the stars and draw no relief: their position
+            #   means nothing, and a relief would pretend otherwise.
+            for rang, capsule in enumerate(retenues):
+                capsule.position_x = (rang + 1) / (len(retenues) + 1)
+                capsule.position_y = 0.5
+            if retenues:
+                Capsule.objects.bulk_update(retenues, ["position_x", "position_y"])
+            Capsule.objects.exclude(
+                uuid__in=[c.uuid for c in retenues]
+            ).exclude(position_x=None).update(position_x=None, position_y=None)
             objet.grille, objet.regions = [], []
             objet.calcule_le = timezone.now()
             objet.save(update_fields=["grille", "regions", "calcule_le"])
