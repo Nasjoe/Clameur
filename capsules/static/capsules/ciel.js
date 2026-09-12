@@ -858,6 +858,20 @@
   recolorer();
   poserLesEtiquettes();
 
+  /*
+   * DEUX PASSES DE PLUS, ET ELLES NE SONT PAS DU LUXE. La taille des noms se
+   * calcule depuis l'echelle du ciel, et leur boite de collision avec : place
+   * avant que le panneau ait sa taille definitive, tout est mesure trop grand
+   * et l'on ecarte des noms qui tiennent. Mesure du 2026-09-12 : huit noms
+   * places au chargement, quatorze une fois la mise en page stable.
+   * La premiere passe attend l'image suivante, la seconde les polices, qui
+   * changent la hauteur de l'en-tete donc celle du panneau.
+   * / Labels are sized from the sky's scale: laid out before the panel has its
+   *   final size, everything is measured too large. Eight against fourteen.
+   */
+  requestAnimationFrame(() => cadrer());
+  document.fonts?.ready?.then(() => cadrer());
+
   // Le bouton actif doit refleter le choix retenu en memoire, sinon la page
   // colore par la duree tout en montrant « Voix » enfonce.
   // / The pressed button must match the remembered choice.
