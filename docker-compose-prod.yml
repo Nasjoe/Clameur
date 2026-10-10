@@ -48,7 +48,24 @@ services:
     entrypoint: ["/app/entrypoint-prod.sh"]
     command: ["supervisord", "-c", "/app/supervisord.conf"]
     env_file: [.env]
+    environment:
+      # Le code est monte depuis l'hote (voir plus bas) : sans cette variable,
+      # Python y ecrirait ses __pycache__ en root, et l'hote ne pourrait plus
+      # les effacer. / Code is mounted from the host: no root-owned __pycache__.
+      PYTHONDONTWRITEBYTECODE: "1"
     volumes:
+      # LE CODE DU DOSSIER, PAS CELUI DE L'IMAGE (2026-10-10). On corrige et on
+      # essaie en direct, sans reconstruire. L'image ne fournit plus que le
+      # systeme, ffmpeg et le venv (/opt/venv, hors de /app, donc pas masque).
+      # Un changement de code ne se voit qu'apres `make recharger` : gunicorn,
+      # daphne et Celery gardent en memoire le code et les gabarits charges
+      # au demarrage, et les statiques passent par collectstatic.
+      # Une NOUVELLE DEPENDANCE, elle, demande toujours un `--build`.
+      # Les deux montages suivants, plus precis, recouvrent celui-ci :
+      # /app/medias et /app/staticfiles ne sont pas ceux du depot.
+      # / Host code, not the image's. `make recharger` to apply a change; a new
+      #   dependency still needs --build. The mounts below override this one.
+      - .:/app
       # LES MEDIAS SONT LE PROJET. Ce sont les voix des gens : elles ne se
       # regenerent pas, contrairement au reste. Elles vivent donc a cote de la
       # base, sur le disque, la ou une sauvegarde les trouve.

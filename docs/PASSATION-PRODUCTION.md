@@ -207,6 +207,14 @@ les lire pour constituer le contexte.
 **Un `build` seul ne suffit pas.** Les conteneurs déjà lancés continuent de
 tourner sur l'ancienne image. Il faut `up -d --force-recreate web`.
 
+**Le code de production est monté depuis le dossier** (depuis le 2026-10-10).
+Le conteneur `web` lit `.:/app`, pas le code copié dans l'image. Après un
+`git pull` ou une modification, **`make recharger`** : `collectstatic`, puis
+redémarrage de gunicorn, daphne et Celery par supervisord. Le conteneur n'est
+pas recréé ; la base et les médias ne sont pas touchés. Une migration se lance
+à part (`exec web python manage.py migrate`). Une **nouvelle dépendance**
+demande toujours un `--build` : le venv vit dans l'image.
+
 **Types MIME.** `.m4a` et `.woff2` sont déclarés côté Django *et* dans
 `nginx/clameur.conf`. Un `.m4a` servi en `application/octet-stream` donne un
 lecteur muet affichant `0:00 / 0:00`, sur un fichier pourtant valide.

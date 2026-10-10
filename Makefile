@@ -97,6 +97,16 @@ demarrer-en-production:
 	$(COMPOSE_PROD) exec -T web python manage.py check --deploy
 	@printf "\n  En route. Les journaux : make journaux\n\n"
 
+# LE CODE DE PRODUCTION EST MONTE DEPUIS LE DOSSIER (docker-compose-prod.yml).
+# Le modifier ne suffit pas : les process gardent en memoire ce qu'ils ont
+# charge. On rassemble les statiques, puis supervisord redemarre gunicorn,
+# daphne et Celery — le conteneur, lui, ne bouge pas, et les donnees non plus.
+# Pas de `migrate` ici : une migration reste un geste delibere.
+# / Production code is mounted: collect static files and restart the processes.
+recharger:  ## Production : applique le code du dossier (statiques + redémarrage des process)
+	$(COMPOSE_PROD) exec -T web python manage.py collectstatic --noinput
+	$(COMPOSE_PROD) exec -T web supervisorctl -c /app/supervisord.conf restart all
+
 journaux:  ## Suit les journaux (production si DEBUG=false)
 ifeq ($(EN_PRODUCTION),)
 	$(COMPOSE) logs -f web celery
