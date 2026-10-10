@@ -23,6 +23,11 @@
     padding: var(--space-2xs) var(--space-xs); margin: var(--space-sm) 0;
   }
   .puits-lecteur audio { width: 100%; height: 34px; display: block; color-scheme: dark; }
+  /* L'ONDE. Le canevas prend la largeur de son conteneur ; enregistreur.js
+     lit cette largeur pour caler sa resolution et le nombre de barres.
+     / The waveform canvas; enregistreur.js reads its width for its resolution. */
+  .onde { display: block; width: 100%; height: 4.5rem; }
+  .onde--reecoute { height: 3.5rem; margin-bottom: var(--space-2xs); cursor: pointer; }
   .duo-champs { display: flex; gap: var(--space-xs); flex-wrap: wrap; }
   /* min-width: 0 : sans lui, un champ flex refuse de descendre sous sa
      largeur par defaut et pousse hors de l'ecran.
@@ -76,13 +81,44 @@
 
 <section id="etape-enregistrement" class="etape" hidden>
   <p class="chrono" id="chrono" aria-live="off">0:00</p>
+  {% comment %}
+    L'ONDE EN DIRECT. Elle montre ce que le micro donne VRAIMENT, pas ce que
+    l'on croit dire. Le 2026-10-01, un telephone a coupe son micro a 35 s : le
+    chrono tournait toujours, et la personne a parle 40 s dans le vide sans le
+    savoir. Avec l'onde, la ligne devient plate sous ses yeux.
+    / Shows what the mic actually delivers: a muted mic draws a flat line.
+  {% endcomment %}
+  <canvas class="onde" id="onde-direct" role="img" data-testid="borne-onde-direct"
+          aria-label="{% translate 'Le niveau de ta voix, en direct' %}"></canvas>
   <p class="doux" id="etat-enregistrement" role="status">{% translate "J'écoute." %}</p>
+  {% comment %}
+    Montre SEULEMENT si le navigateur refuse de garder l'ecran allume (Wake
+    Lock absent, comme dans le navigateur integre de Facebook). Ecran eteint,
+    Android coupe le micro de la page.
+    / Shown only when the browser cannot keep the screen on.
+  {% endcomment %}
+  <p class="carte avis" id="avis-veille" data-testid="borne-avis-veille" hidden>
+    {% translate "Garde ton écran allumé : touche-le de temps en temps. S'il s'éteint, ton téléphone coupe le micro." %}
+  </p>
   <button class="porte porte--rose porte--large porte--grande" id="bouton-arreter" type="button">{% translate "J'ai fini" %}</button>
 </section>
 
 <section id="etape-formulaire" class="etape" hidden>
   <p class="doux">{% translate "Réécoute-toi avant de publier." %}</p>
-  <div class="puits-lecteur"><audio id="reecoute" controls></audio></div>
+  {% comment %}
+    L'onde de la reecoute est dessinee depuis le fichier LUI-MEME, celui qui
+    part au serveur : un trou dans l'enregistrement s'y voit avant de publier.
+    Un toucher sur l'onde deplace la lecture ; le lecteur natif reste la pour
+    le clavier et les lecteurs d'ecran.
+    / Drawn from the very file that is uploaded; the native player stays for
+      keyboard and screen-reader users.
+  {% endcomment %}
+  <div class="puits-lecteur">
+    <canvas class="onde onde--reecoute" id="onde-reecoute" role="img" hidden
+            data-testid="borne-onde-reecoute"
+            aria-label="{% translate 'La forme de ton enregistrement' %}"></canvas>
+    <audio id="reecoute" controls></audio>
+  </div>
 
   <form id="formulaire-publication" style="display:grid;gap:var(--space-sm)">
     <label for="pseudo" class="doux">{% translate "Un pseudo, si tu veux" %}</label>
